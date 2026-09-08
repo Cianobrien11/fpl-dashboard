@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+fpl.db
+_selftest.py
+.venv/
+venv/
+.DS_Store

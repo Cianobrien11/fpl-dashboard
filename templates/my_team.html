@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}My Team — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>My Team &mdash; Captain Picks for GW{{ gw }}</h2>
+  <p class="hint">Ranked by captaincy appeal: attackers vs leaky defences, defenders vs weak attacks &amp; home advantage.</p>
+  <form method="get" style="margin-bottom:12px">
+    <label class="hint">Gameweek <input type="number" name="gw" value="{{ gw }}" min="1" max="38" style="width:60px"></label>
+    <button class="btn" style="margin-left:8px;padding:5px 14px" type="submit">Update</button>
+  </form>
+  <table>
+    <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Opponent</th><th>Appeal</th></tr></thead>
+    <tbody>
+    {% for c in caps %}
+      <tr class="{{ 't1' if loop.index0<3 else 't2' if loop.index0<6 else 't3' }}">
+        <td class="rk">{{ loop.index }}</td>
+        <td class="tn">{% if loop.index0==0 %}&#128081; {% endif %}{{ c.name }}</td>
+        <td>{{ c.position }}</td>
+        <td>{{ c.team }}</td>
+        <td class="mono">{{ c.opponent }} ({{ c.venue }})</td>
+        <td class="mono cnt-hi">{{ '%.2f'|format(c.appeal) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if hints %}
+<div class="wrap">
+  <h2>&#9888;&#65039; Transfer Watch (poor next-5 run)</h2>
+  <p class="hint">Players whose team has 1 or fewer easy fixtures in the next 5 gameweeks — candidates to move on.</p>
+  <table>
+    <thead><tr><th>Player</th><th>Pos</th><th>Team</th><th>Easy next 5</th></tr></thead>
+    <tbody>
+    {% for h in hints %}
+      <tr><td class="tn">{{ h.name }}</td><td>{{ h.position }}</td><td>{{ h.team }}</td>
+          <td class="cnt cnt-lo">{{ h.easy_next5 }}/5</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="wrap">
+  <h2>Edit Squad</h2>
+  <p class="hint">One player per line: <code>Name | Team | Position | Price</code>. Position is GK/DEF/MID/FWD. Team must match a Premier League name (e.g. Man City, Nottm Forest).</p>
+  <form method="post">
+    <textarea name="squad">{% for p in squad %}{{ p.name }} | {{ p.team }} | {{ p.position }} | {{ p.price }}
+{% endfor %}</textarea>
+    <div style="margin-top:10px"><button class="btn" type="submit">Save Squad</button></div>
+  </form>
+</div>
+{% endblock %}

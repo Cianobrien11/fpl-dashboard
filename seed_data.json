@@ -1,0 +1,1321 @@
+{
+ "team_stats": {
+  "Arsenal": {
+   "gf": 6,
+   "xg": 4.96,
+   "ga": 1,
+   "xga": 0.98,
+   "sh": 43,
+   "sot": 17,
+   "sh_ag": 24,
+   "sot_ag": 6,
+   "mp": 3
+  },
+  "Aston Villa": {
+   "gf": 0,
+   "xg": 2.59,
+   "ga": 5,
+   "xga": 5.31,
+   "sh": 26,
+   "sot": 1,
+   "sh_ag": 39,
+   "sot_ag": 12,
+   "mp": 3
+  },
+  "Bournemouth": {
+   "gf": 3,
+   "xg": 4.34,
+   "ga": 5,
+   "xga": 4.74,
+   "sh": 39,
+   "sot": 14,
+   "sh_ag": 34,
+   "sot_ag": 15,
+   "mp": 3
+  },
+  "Brentford": {
+   "gf": 5,
+   "xg": 6.84,
+   "ga": 2,
+   "xga": 3.75,
+   "sh": 60,
+   "sot": 15,
+   "sh_ag": 35,
+   "sot_ag": 11,
+   "mp": 3
+  },
+  "Brighton": {
+   "gf": 6,
+   "xg": 7.46,
+   "ga": 8,
+   "xga": 6.0,
+   "sh": 56,
+   "sot": 17,
+   "sh_ag": 33,
+   "sot_ag": 11,
+   "mp": 3
+  },
+  "Chelsea": {
+   "gf": 8,
+   "xg": 5.68,
+   "ga": 7,
+   "xga": 5.07,
+   "sh": 48,
+   "sot": 17,
+   "sh_ag": 45,
+   "sot_ag": 21,
+   "mp": 3
+  },
+  "Coventry": {
+   "gf": 0,
+   "xg": 2.8,
+   "ga": 5,
+   "xga": 4.38,
+   "sh": 27,
+   "sot": 7,
+   "sh_ag": 41,
+   "sot_ag": 12,
+   "mp": 3
+  },
+  "Crystal Palace": {
+   "gf": 3,
+   "xg": 5.14,
+   "ga": 4,
+   "xga": 6.07,
+   "sh": 30,
+   "sot": 10,
+   "sh_ag": 59,
+   "sot_ag": 20,
+   "mp": 3
+  },
+  "Everton": {
+   "gf": 5,
+   "xg": 3.92,
+   "ga": 3,
+   "xga": 4.95,
+   "sh": 47,
+   "sot": 18,
+   "sh_ag": 42,
+   "sot_ag": 12,
+   "mp": 3
+  },
+  "Fulham": {
+   "gf": 4,
+   "xg": 5.49,
+   "ga": 7,
+   "xga": 6.79,
+   "sh": 50,
+   "sot": 12,
+   "sh_ag": 40,
+   "sot_ag": 15,
+   "mp": 3
+  },
+  "Hull City": {
+   "gf": 3,
+   "xg": 2.63,
+   "ga": 0,
+   "xga": 5.06,
+   "sh": 25,
+   "sot": 10,
+   "sh_ag": 45,
+   "sot_ag": 15,
+   "mp": 3
+  },
+  "Ipswich": {
+   "gf": 4,
+   "xg": 4.53,
+   "ga": 8,
+   "xga": 6.47,
+   "sh": 33,
+   "sot": 13,
+   "sh_ag": 54,
+   "sot_ag": 22,
+   "mp": 3
+  },
+  "Leeds": {
+   "gf": 3,
+   "xg": 4.53,
+   "ga": 3,
+   "xga": 4.45,
+   "sh": 33,
+   "sot": 10,
+   "sh_ag": 54,
+   "sot_ag": 12,
+   "mp": 3
+  },
+  "Liverpool": {
+   "gf": 6,
+   "xg": 5.47,
+   "ga": 4,
+   "xga": 5.17,
+   "sh": 50,
+   "sot": 18,
+   "sh_ag": 39,
+   "sot_ag": 12,
+   "mp": 3
+  },
+  "Man City": {
+   "gf": 7,
+   "xg": 5.95,
+   "ga": 2,
+   "xga": 2.45,
+   "sh": 46,
+   "sot": 19,
+   "sh_ag": 26,
+   "sot_ag": 8,
+   "mp": 3
+  },
+  "Man United": {
+   "gf": 6,
+   "xg": 7.57,
+   "ga": 6,
+   "xga": 4.37,
+   "sh": 68,
+   "sot": 19,
+   "sh_ag": 35,
+   "sot_ag": 15,
+   "mp": 3
+  },
+  "Newcastle": {
+   "gf": 6,
+   "xg": 3.1,
+   "ga": 4,
+   "xga": 5.58,
+   "sh": 32,
+   "sot": 8,
+   "sh_ag": 61,
+   "sot_ag": 18,
+   "mp": 3
+  },
+  "Nottm Forest": {
+   "gf": 2,
+   "xg": 4.92,
+   "ga": 3,
+   "xga": 3.83,
+   "sh": 36,
+   "sot": 7,
+   "sh_ag": 35,
+   "sot_ag": 7,
+   "mp": 3
+  },
+  "Sunderland": {
+   "gf": 3,
+   "xg": 4.65,
+   "ga": 3,
+   "xga": 3.95,
+   "sh": 37,
+   "sot": 13,
+   "sh_ag": 33,
+   "sot_ag": 5,
+   "mp": 3
+  },
+  "Tottenham": {
+   "gf": 0,
+   "xg": 3.09,
+   "ga": 5,
+   "xga": 6.29,
+   "sh": 37,
+   "sot": 10,
+   "sh_ag": 49,
+   "sot_ag": 12,
+   "mp": 3
+  }
+ },
+ "fixtures": {
+  "Arsenal": [
+   {
+    "gw": 4,
+    "opponent": "Sunderland",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Brighton",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Leeds",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Nottm Forest",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Everton",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Liverpool",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Hull City",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Newcastle",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Aston Villa": [
+   {
+    "gw": 4,
+    "opponent": "Nottm Forest",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Tottenham",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Brentford",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Newcastle",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Man City",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Fulham",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Man United",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Sunderland",
+    "venue": "H",
+    "fdr": 3
+   }
+  ],
+  "Bournemouth": [
+   {
+    "gw": 4,
+    "opponent": "Brentford",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Liverpool",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Chelsea",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Sunderland",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Man United",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Leeds",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Ipswich",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Nottm Forest",
+    "venue": "H",
+    "fdr": 3
+   }
+  ],
+  "Brentford": [
+   {
+    "gw": 4,
+    "opponent": "Bournemouth",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Chelsea",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Aston Villa",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Liverpool",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Hull City",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Nottm Forest",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Brighton",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Everton",
+    "venue": "H",
+    "fdr": 3
+   }
+  ],
+  "Brighton": [
+   {
+    "gw": 4,
+    "opponent": "Coventry",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Arsenal",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Sunderland",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Crystal Palace",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Liverpool",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Man City",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Brentford",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Hull City",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Chelsea": [
+   {
+    "gw": 4,
+    "opponent": "Hull City",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Brentford",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Bournemouth",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Everton",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Tottenham",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Man United",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Sunderland",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Leeds",
+    "venue": "H",
+    "fdr": 3
+   }
+  ],
+  "Coventry": [
+   {
+    "gw": 4,
+    "opponent": "Brighton",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Nottm Forest",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Newcastle",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Tottenham",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Fulham",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Sunderland",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Everton",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Crystal Palace",
+    "venue": "H",
+    "fdr": 3
+   }
+  ],
+  "Crystal Palace": [
+   {
+    "gw": 4,
+    "opponent": "Ipswich",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Leeds",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Nottm Forest",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Brighton",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Newcastle",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Tottenham",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Liverpool",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Coventry",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Everton": [
+   {
+    "gw": 4,
+    "opponent": "Tottenham",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Ipswich",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Hull City",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Chelsea",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Arsenal",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Newcastle",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Coventry",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Brentford",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Fulham": [
+   {
+    "gw": 4,
+    "opponent": "Liverpool",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Man United",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Ipswich",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Hull City",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Coventry",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Aston Villa",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Newcastle",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Man City",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Hull City": [
+   {
+    "gw": 4,
+    "opponent": "Chelsea",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Newcastle",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Everton",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Fulham",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Brentford",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Ipswich",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Arsenal",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Brighton",
+    "venue": "H",
+    "fdr": 3
+   }
+  ],
+  "Ipswich": [
+   {
+    "gw": 4,
+    "opponent": "Crystal Palace",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Everton",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Fulham",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Man City",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Nottm Forest",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Hull City",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Bournemouth",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Tottenham",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Leeds": [
+   {
+    "gw": 4,
+    "opponent": "Newcastle",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Crystal Palace",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Arsenal",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Man United",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Sunderland",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Bournemouth",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Tottenham",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Chelsea",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Liverpool": [
+   {
+    "gw": 4,
+    "opponent": "Fulham",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Bournemouth",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Man City",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Brentford",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Brighton",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Arsenal",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Crystal Palace",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Man United",
+    "venue": "H",
+    "fdr": 3
+   }
+  ],
+  "Man City": [
+   {
+    "gw": 4,
+    "opponent": "Man United",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Sunderland",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Liverpool",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Ipswich",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Aston Villa",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Brighton",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Nottm Forest",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Fulham",
+    "venue": "H",
+    "fdr": 3
+   }
+  ],
+  "Man United": [
+   {
+    "gw": 4,
+    "opponent": "Man City",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Fulham",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Tottenham",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Leeds",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Bournemouth",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Chelsea",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Aston Villa",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Liverpool",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Newcastle": [
+   {
+    "gw": 4,
+    "opponent": "Leeds",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Hull City",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Coventry",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Aston Villa",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Crystal Palace",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Everton",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Fulham",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Arsenal",
+    "venue": "H",
+    "fdr": 3
+   }
+  ],
+  "Nottm Forest": [
+   {
+    "gw": 4,
+    "opponent": "Aston Villa",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Coventry",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Crystal Palace",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Arsenal",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Ipswich",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Brentford",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Man City",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Bournemouth",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Sunderland": [
+   {
+    "gw": 4,
+    "opponent": "Arsenal",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Man City",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Brighton",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Bournemouth",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Leeds",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Coventry",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Chelsea",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Aston Villa",
+    "venue": "A",
+    "fdr": 3
+   }
+  ],
+  "Tottenham": [
+   {
+    "gw": 4,
+    "opponent": "Everton",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 5,
+    "opponent": "Aston Villa",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 6,
+    "opponent": "Man United",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 7,
+    "opponent": "Coventry",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 8,
+    "opponent": "Chelsea",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 9,
+    "opponent": "Crystal Palace",
+    "venue": "H",
+    "fdr": 3
+   },
+   {
+    "gw": 10,
+    "opponent": "Leeds",
+    "venue": "A",
+    "fdr": 3
+   },
+   {
+    "gw": 11,
+    "opponent": "Ipswich",
+    "venue": "H",
+    "fdr": 3
+   }
+  ]
+ },
+ "squad": [
+  {
+   "name": "Raya",
+   "team": "Arsenal",
+   "position": "GK",
+   "price": 6.0
+  },
+  {
+   "name": "Dubravka",
+   "team": "Tottenham",
+   "position": "GK",
+   "price": 4.0
+  },
+  {
+   "name": "Gvardiol",
+   "team": "Man City",
+   "position": "DEF",
+   "price": 5.6
+  },
+  {
+   "name": "Konsa",
+   "team": "Arsenal",
+   "position": "DEF",
+   "price": 4.4
+  },
+  {
+   "name": "Ajer",
+   "team": "Brentford",
+   "position": "DEF",
+   "price": 4.5
+  },
+  {
+   "name": "Hall",
+   "team": "Newcastle",
+   "position": "DEF",
+   "price": 5.1
+  },
+  {
+   "name": "De Cuyper",
+   "team": "Brighton",
+   "position": "DEF",
+   "price": 4.7
+  },
+  {
+   "name": "Mbeumo",
+   "team": "Man United",
+   "position": "MID",
+   "price": 8.0
+  },
+  {
+   "name": "Cherki",
+   "team": "Man City",
+   "position": "MID",
+   "price": 7.7
+  },
+  {
+   "name": "Sangare",
+   "team": "Brentford",
+   "position": "MID",
+   "price": 5.7
+  },
+  {
+   "name": "Szoboszlai",
+   "team": "Liverpool",
+   "position": "MID",
+   "price": 7.0
+  },
+  {
+   "name": "Elanga",
+   "team": "Newcastle",
+   "position": "MID",
+   "price": 6.1
+  },
+  {
+   "name": "Haaland",
+   "team": "Man City",
+   "position": "FWD",
+   "price": 15.5
+  },
+  {
+   "name": "Wissa",
+   "team": "Newcastle",
+   "position": "FWD",
+   "price": 6.1
+  },
+  {
+   "name": "Joao Pedro",
+   "team": "Chelsea",
+   "position": "FWD",
+   "price": 7.6
+  }
+ ],
+ "current_gw": 3,
+ "next_gw": 4,
+ "scraped_at": "2026-09-07 (seed data \u2014 GW3 stats)"
+}

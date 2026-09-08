@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}FPL Dashboard{% endblock %}</title>
+<script src="https://cdn.jsdelivr.net/npm/highcharts@12.1.2/highcharts.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highcharts@12.1.2/modules/accessibility.js"></script>
+<style>
+:root{
+  --bg:#0f1420;--panel:#1a2130;--panel2:#232c3d;--border:#2c3648;
+  --text:#e8ecf4;--muted:#8b97ad;--primary:#37e6a4;--primary2:#2bd18f;
+  --green-bg:#123524;--green-tx:#4ade80;--yellow-bg:#3a3410;--yellow-tx:#fbbf24;
+  --red-bg:#3a1518;--red-tx:#f87171;--blue-bg:#0e2a44;--blue-tx:#60a5fa;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;padding-bottom:40px}
+header{background:linear-gradient(90deg,#0c2d1f,#123a29);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+header h1{font-size:18px;font-weight:800;color:var(--primary)}
+header .sub{font-size:11px;color:var(--muted)}
+nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+nav a{padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;transition:.15s}
+nav a:hover{background:var(--panel2);color:var(--text)}
+nav a.active{background:var(--primary);color:#08130d}
+.refresh{padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;background:var(--panel2);color:var(--text);border:1px solid var(--border);cursor:pointer}
+.refresh:hover{border-color:var(--primary);color:var(--primary)}
+main{max-width:1180px;margin:20px auto;padding:0 16px}
+.wrap{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{font-size:16px;font-weight:700;margin-bottom:4px}
+.hint{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5}
+table{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}
+th{text-align:left;color:var(--muted);font-weight:600;padding:8px 6px;border-bottom:2px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+td{padding:7px 6px;border-bottom:1px solid var(--border);font-size:12px}
+tr:hover td{background:var(--panel2)}
+.rk{font-weight:800;font-size:13px;text-align:center;width:26px;font-family:monospace}
+.tn{font-weight:700;min-width:95px}
+.mono{font-family:monospace;font-size:11px}
+.cnt{font-weight:800;font-size:13px;text-align:center}
+.cnt-hi{color:var(--primary)}.cnt-md{color:var(--yellow-tx)}.cnt-lo{color:var(--muted)}
+.fx{display:inline-block;padding:2px 4px;border-radius:4px;font-size:10px;font-weight:700;min-width:46px;text-align:center}
+.fx-g{background:var(--green-bg);color:var(--green-tx)}
+.fx-y{background:var(--yellow-bg);color:var(--yellow-tx)}
+.fx-r{background:var(--red-bg);color:var(--red-tx)}
+.gwcol{text-align:center;padding:3px 2px}
+tr.t1 td:first-child{border-left:3px solid var(--primary)}
+tr.t2 td:first-child{border-left:3px solid var(--blue-tx)}
+tr.t3 td:first-child{border-left:3px solid var(--yellow-tx)}
+tr.t4 td:first-child{border-left:3px solid var(--red-tx)}
+.tabs{display:flex;gap:3px;border-bottom:2px solid var(--border);margin-bottom:14px;flex-wrap:wrap}
+.tabbtn{padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;border-radius:8px 8px 0 0;background:transparent;color:var(--muted);border:1px solid transparent;border-bottom:none;position:relative;bottom:-2px}
+.tabbtn.active{background:var(--panel);color:var(--primary);border-color:var(--border);border-bottom:2px solid var(--panel)}
+.tabpane{display:none}.tabpane.active{display:block}
+.toggle-row{display:flex;align-items:center;gap:8px;margin:8px 0 14px}
+.switch{position:relative;display:inline-block;width:40px;height:22px}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;inset:0;background:var(--border);border-radius:22px;transition:.2s}
+.slider:before{position:absolute;content:"";height:16px;width:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+input:checked+.slider{background:var(--primary)}
+input:checked+.slider:before{transform:translateX(18px)}
+.badge{display:inline-block;padding:2px 8px;border-radius:100px;font-size:10px;font-weight:700}
+.b-clear{background:var(--green-bg);color:var(--green-tx)}
+.b-lean{background:var(--blue-bg);color:var(--blue-tx)}
+.b-tight{background:var(--yellow-bg);color:var(--yellow-tx)}
+.pred-card{display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--border)}
+.pred-teams{flex:1;font-weight:600}
+.pred-score{font-family:monospace;font-size:20px;font-weight:800;color:var(--primary);min-width:60px;text-align:center}
+.pred-xg{font-family:monospace;font-size:11px;color:var(--muted);min-width:90px}
+textarea{width:100%;min-height:280px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font-family:monospace;font-size:12px}
+.btn{padding:9px 18px;border-radius:8px;font-weight:700;background:var(--primary);color:#08130d;border:none;cursor:pointer;font-size:13px}
+.pitch{background:linear-gradient(180deg,#0d3320,#124329);border-radius:12px;padding:16px 8px;margin-bottom:14px}
+.prow{display:flex;justify-content:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.pcard{background:rgba(255,255,255,.95);color:#0b1a12;border-radius:8px;padding:6px 10px;text-align:center;min-width:80px}
+.pcard .pn{font-size:11px;font-weight:800}.pcard .pt{font-size:9px;color:#556}
+.err{background:var(--red-bg);color:var(--red-tx);padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:10px}
+select,input[type=number]{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px}
+form.inline{display:inline}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>&#9917; FPL Dashboard</h1>
+    <div class="sub">Updated: {{ scraped_at }}</div>
+  </div>
+  <nav>
+    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active=='dashboard' }}">Targets</a>
+    <a href="{{ url_for('predictions') }}" class="{{ 'active' if active=='predictions' }}">Predictions</a>
+    <a href="{{ url_for('planner') }}" class="{{ 'active' if active=='planner' }}">Planner</a>
+    <a href="{{ url_for('my_team') }}" class="{{ 'active' if active=='my_team' }}">My Team</a>
+    <form class="inline" method="post" action="{{ url_for('update') }}">
+      <button class="refresh" type="submit">&#8635; Refresh Data</button>
+    </form>
+  </nav>
+</header>
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>

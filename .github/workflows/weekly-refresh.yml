@@ -1,0 +1,26 @@
+name: Weekly Data Refresh
+
+# Auto-refresh the FPL dashboard's stats & fixtures once a week.
+# Runs Friday 07:00 UTC (ahead of the typical Saturday deadline) and can
+# also be triggered manually from the Actions tab.
+on:
+  schedule:
+    - cron: "0 7 * * 5"   # 07:00 UTC every Friday
+  workflow_dispatch: {}    # manual "Run workflow" button
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the dashboard refresh endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}       # e.g. https://fpl-dashboard.onrender.com
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}  # same value set in Render
+        run: |
+          echo "Calling refresh endpoint..."
+          # --fail-with-body: non-2xx exits non-zero but still prints the body.
+          # --max-time 120: Render free tier can take ~30s to wake from sleep.
+          curl --fail-with-body --max-time 120 \
+               "$APP_URL/cron/refresh?token=$CRON_TOKEN"
+          echo ""
+          echo "Refresh request completed."

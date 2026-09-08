@@ -1,0 +1,28 @@
+# Render blueprint — provisions the web service AND a free Postgres database.
+# On first deploy Render reads this file, creates both, and wires DATABASE_URL
+# into the web service automatically.
+databases:
+  - name: fpl-db
+    plan: free
+
+services:
+  - type: web
+    name: fpl-dashboard
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.4"
+      # Durable storage — injected from the Postgres DB above so data
+      # survives redeploys (SQLite on the free tier would be wiped).
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fpl-db
+          property: connectionString
+      # Shared secret for the weekly auto-refresh GitHub Action.
+      # Set the actual value in the Render dashboard (Environment tab) and
+      # add the same value as a GitHub Actions secret named CRON_TOKEN.
+      - key: CRON_TOKEN
+        sync: false
