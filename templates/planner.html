@@ -2,42 +2,81 @@
 {% block title %}Planner — FPL Dashboard{% endblock %}
 {% block content %}
 <div class="wrap">
-  <h2>Transfer Planner &mdash; GW{{ gw_from }} to GW{{ gw_to }}</h2>
-  <p class="hint">A gameweek-by-gameweek guide based on your squad's fixtures. Each row flags the weakest
-     fixture in your team that week, suggests a stronger team to move toward, and gives the captain pick.
-     Heuristic guidance &mdash; not automated transfers.</p>
-
-  <form method="get" style="margin-bottom:14px">
+  <h2>Transfer Planner &mdash; Player Targets</h2>
+  <p class="hint">Best players to target by position. &#11088; = already in your squad. Targets are players whose team has a
+     favourable fixture (attackers vs leaky defences, defenders/keepers vs weak attacks), ranked by form + underlying stats.</p>
+  {% if not has_players %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% else %}
+  <form method="get" style="margin-bottom:8px">
     <label class="hint">From GW <input type="number" name="from" value="{{ gw_from }}" min="1" max="38" style="width:60px"></label>
     <label class="hint" style="margin-left:8px">To GW <input type="number" name="to" value="{{ gw_to }}" min="1" max="38" style="width:60px"></label>
     <button class="btn" style="margin-left:8px;padding:5px 14px" type="submit">Apply</button>
   </form>
-
-  <table>
-    <thead><tr><th>GW</th><th>Suggested move</th><th>Reason</th><th>Captain</th></tr></thead>
-    <tbody>
-    {% for row in plan %}
-      <tr>
-        <td class="rk">GW{{ row.gw }}</td>
-        {% if row.move %}
-          <td><span class="fx fx-r">OUT {{ row.move.out }}</span>
-              <span style="color:var(--muted)">&rarr;</span>
-              <span class="fx fx-g">IN {{ row.move.in_team or 'best avail.' }}</span></td>
-          <td class="hint" style="margin:0">{{ row.move.reason }}</td>
-        {% else %}
-          <td class="hint" style="margin:0;color:var(--primary)">&#10003; Hold &mdash; no weak fixture</td>
-          <td class="hint" style="margin:0">Squad well set this week; bank the transfer.</td>
-        {% endif %}
-        <td class="mono" style="color:var(--primary)">&#128081; {{ row.captain }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  {% endif %}
 </div>
 
+{% if has_players %}
+<!-- OVERALL next-5 view -->
+<div class="wrap">
+  <h2>&#128293; Overall Targets &mdash; {{ overall.gws[0] }} to {{ overall.gws[-1] }}</h2>
+  <p class="hint">Best players across the whole window (combines form &amp; underlying stats with how many easy fixtures their team has).</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="chart-grid">
+    {% for pos in ['GK','DEF','MID','FWD'] %}
+    <div>
+      <h2 style="font-size:14px;margin-bottom:6px">{{ {'GK':'Goalkeepers','DEF':'Defenders','MID':'Midfielders','FWD':'Forwards'}[pos] }}</h2>
+      <table>
+        <thead><tr><th>Player</th><th>Team</th><th>£</th><th>Form</th><th>Easy</th><th>Score</th></tr></thead>
+        <tbody>
+        {% for p in overall.positions[pos] %}
+          <tr>
+            <td class="tn">{% if p.owned %}&#11088; {% endif %}{{ p.name }}</td>
+            <td class="mono">{{ p.team }}</td>
+            <td class="mono">{{ '%.1f'|format(p.price) }}</td>
+            <td class="mono">{{ '%.1f'|format(p.form) }}</td>
+            <td class="cnt {{ 'cnt-hi' if p.easy_n>=3 else 'cnt-md' if p.easy_n>=2 else 'cnt-lo' }}">{{ p.easy_n }}/{{ overall.gws|length }}</td>
+            <td class="mono cnt-hi">{{ p.score }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- PER-GAMEWEEK targets -->
+<div class="wrap">
+  <h2>Per-Gameweek Targets</h2>
+  <p class="hint">Top few picks per position for each gameweek in the window. &#11088; = you own them.</p>
+  {% for gw, tgt in gw_targets.items() %}
+  <div style="margin-bottom:16px">
+    <h2 style="font-size:14px;margin-bottom:6px;color:var(--primary)">GW{{ gw }}</h2>
+    <table>
+      <thead><tr><th>Pos</th><th>Player</th><th>Team</th><th>Opp</th><th>£</th><th>Form</th></tr></thead>
+      <tbody>
+      {% for pos in ['GK','DEF','MID','FWD'] %}
+        {% for p in tgt[pos] %}
+        <tr>
+          <td>{{ pos if loop.first }}</td>
+          <td class="tn">{% if p.owned %}&#11088; {% endif %}{{ p.name }}</td>
+          <td class="mono">{{ p.team }}</td>
+          <td class="mono"><span class="fx {{ 'fx-g' if p.fix_d==0 else 'fx-y' }}">{{ p.opp }} ({{ p.venue }})</span></td>
+          <td class="mono">{{ '%.1f'|format(p.price) }}</td>
+          <td class="mono">{{ '%.1f'|format(p.form) }}</td>
+        </tr>
+        {% endfor %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Fixture ease trend chart -->
 <div class="wrap">
   <h2>Fixture Ease Trends</h2>
-  <p class="hint">Your planning window at a glance. 3 = easy, 1 = tough. Toggle teams in the legend.</p>
+  <p class="hint">3 = easy, 1 = tough. Toggle teams in the legend.</p>
   <div class="tabs" style="margin-bottom:10px">
     <div class="tabbtn active" data-tr="cs">&#129508; Clean Sheets</div>
     <div class="tabbtn" data-tr="gs">&#9889; Goals</div>
@@ -68,8 +107,8 @@ function drawTrend(cat){
 drawTrend('cs');
 document.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('[data-tr]').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');
-  drawTrend(b.dataset.tr);
+  b.classList.add('active'); drawTrend(b.dataset.tr);
 });
 </script>
+{% endif %}
 {% endblock %}

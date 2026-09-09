@@ -330,7 +330,8 @@ def filter_sort_players(players: list, position: str = "ALL", team: str = "ALL",
             continue
         rows.append(p)
     valid = {"points", "price", "form", "xg", "xa", "xgi", "defcon",
-             "selected_by", "ppm", "ict", "goals", "assists"}
+             "selected_by", "ppm", "ict", "goals", "assists",
+             "defcon_pg", "xgi_pg", "ppg", "minutes", "bonus"}
     key = sort if sort in valid else "points"
     rows.sort(key=lambda r: r.get(key, 0) or 0, reverse=True)
     return rows[:limit]
@@ -395,3 +396,125 @@ def value_finder(players: list, min_minutes: int = 90) -> dict:
 
 STATUS_LABEL = {"a": "Available", "i": "Injured", "s": "Suspended",
                 "d": "Doubtful", "u": "Unavailable"}
+
+
+# ==========================================================================
+# Player transfer targets — per-gameweek and multi-GW overall
+# ==========================================================================
+
+def _player_target_score(p: dict) -> float:
+    """
+    Rank a player's appeal as a transfer target.
+    Blends form, points-per-game, and position-appropriate underlying stats.
+    """
+    pos = p.get("position")
+    base = p.get("form", 0) * 1.5 + p.get("ppg", 0) * 1.0
+    if pos in ("MID", "FWD"):
+        base += p.get("xgi_pg", 0) * 4.0        # attacking threat per game
+        base += p.get("ppm", 0) * 0.5           # value
+    else:  # GK / DEF
+        base += p.get("defcon_pg", 0) * 0.3     # defensive contribution per game
+        base += p.get("clean_sheets", 0) * 0.8
+        base += p.get("xgi_pg", 0) * 2.0        # attacking returns are a bonus
+    # nudge down players with little game time (rotation risk)
+    if p.get("minutes", 0) < 90:
+        base *= 0.5
+    return round(base, 2)
+
+
+def gw_player_targets(players: list, rankings: dict, fixtures: dict,
+                      squad: list, gw: int, per_pos: int = 3) -> dict:
+    """
+    Best players to target for a single gameweek, by position.
+
+    A player qualifies if their team has a favourable fixture that week
+    (easy/medium for the relevant category — CS for GK/DEF, goals for MID/FWD).
+    Each result is flagged 'owned' if the player is in the user's squad.
+    """
+    owned = {(s.get("name"), s.get("team")) for s in squad}
+    # precompute each team's difficulty this GW for both categories
+    team_fix = {}
+    for team in CANONICAL_TEAMS:
+        fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
+        if not fx or fx["opponent"] not in rankings:
+            continue
+        cs_d = _difficulty("cs", rankings[fx["opponent"]], fx["venue"])
+        gs_d = _difficulty("gs", rankings[fx["opponent"]], fx["venue"])
+        team_fix[team] = {"opp": CODE.get(fx["opponent"], fx["opponent"][:3]),
+                          "venue": fx["venue"], "cs_d": cs_d, "gs_d": gs_d}
+
+    out = {"GK": [], "DEF": [], "MID": [], "FWD": []}
+    for p in players:
+        tf = team_fix.get(p.get("team"))
+        if not tf:
+            continue
+        pos = p.get("position")
+        # relevant fixture difficulty: attackers need goals-fixture, defenders CS-fixture
+        diff = tf["gs_d"] if pos in ("MID", "FWD") else tf["cs_d"]
+        if diff == 2:  # tough fixture — skip
+            continue
+        out.setdefault(pos, []).append({
+            "name": p["name"], "team": p["team"], "position": pos,
+            "price": p.get("price", 0), "form": p.get("form", 0),
+            "opp": tf["opp"], "venue": tf["venue"], "fix_d": diff,
+            "score": _player_target_score(p),
+            "owned": (p.get("name"), p.get("team")) in owned,
+        })
+    for pos in out:
+        out[pos].sort(key=lambda r: -r["score"])
+        out[pos] = out[pos][:per_pos]
+    return out
+
+
+def overall_targets(players: list, rankings: dict, fixtures: dict,
+                    squad: list, gw_from: int, gw_to: int,
+                    per_pos: int = 8) -> dict:
+    """
+    Best players to target across a multi-GW window (default next 5).
+
+    Combines player quality (form + underlying) with how many easy/medium
+    fixtures their team has over the window. Flags owned players.
+    """
+    owned = {(s.get("name"), s.get("team")) for s in squad}
+    gws = list(range(gw_from, gw_to + 1))
+    n = len(gws)
+
+    # fixture ease per team over the window, per category (0=easy 1=med 2=hard)
+    team_ease = {}
+    for team in CANONICAL_TEAMS:
+        cs_pts, gs_pts, chips = [], [], []
+        for gw in gws:
+            fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
+            if not fx or fx["opponent"] not in rankings:
+                cs_pts.append(0); gs_pts.append(0); chips.append(None)
+                continue
+            cs_d = _difficulty("cs", rankings[fx["opponent"]], fx["venue"])
+            gs_d = _difficulty("gs", rankings[fx["opponent"]], fx["venue"])
+            cs_pts.append(2 - cs_d)   # easy=2, med=1, hard=0
+            gs_pts.append(2 - gs_d)
+            chips.append(f"{CODE.get(fx['opponent'], fx['opponent'][:3])}({fx['venue']})")
+        team_ease[team] = {"cs": cs_pts, "gs": gs_pts, "chips": chips}
+
+    out = {"GK": [], "DEF": [], "MID": [], "FWD": []}
+    for p in players:
+        te = team_ease.get(p.get("team"))
+        if not te:
+            continue
+        pos = p.get("position")
+        ease = te["gs"] if pos in ("MID", "FWD") else te["cs"]
+        ease_sum = sum(ease)                 # 0..2n
+        easy_n = sum(1 for e in ease if e == 2)
+        # combined: player quality + fixture ease over the window
+        combined = _player_target_score(p) + ease_sum * 0.8
+        out.setdefault(pos, []).append({
+            "name": p["name"], "team": p["team"], "position": pos,
+            "price": p.get("price", 0), "form": p.get("form", 0),
+            "points": p.get("points", 0), "ppg": p.get("ppg", 0),
+            "easy_n": easy_n, "chips": te["chips"],
+            "score": round(combined, 1),
+            "owned": (p.get("name"), p.get("team")) in owned,
+        })
+    for pos in out:
+        out[pos].sort(key=lambda r: -r["score"])
+        out[pos] = out[pos][:per_pos]
+    return {"positions": out, "gws": [f"GW{g}" for g in gws]}

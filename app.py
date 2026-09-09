@@ -78,16 +78,22 @@ def predictions():
 @app.route("/my-team", methods=["GET", "POST"])
 def my_team():
     snap = _ensure_data()
+    players = _players(snap)
     if request.method == "POST":
-        # squad edited via the form: list of name|team|position|price rows
+        # squad submitted from the builder as JSON (list of picks)
         rows = []
-        for line in request.form.get("squad", "").strip().splitlines():
-            parts = [p.strip() for p in line.split("|")]
-            if len(parts) == 4:
-                rows.append({"name": parts[0], "team": parts[1],
-                             "position": parts[2], "price": float(parts[3])})
-        if rows:
-            models.save_squad(rows)
+        raw = request.form.get("squad_json", "").strip()
+        if raw:
+            try:
+                picks = json.loads(raw)
+                for p in picks:
+                    if p.get("name") and p.get("team"):
+                        rows.append({"name": p["name"], "team": p["team"],
+                                     "position": p.get("position", ""),
+                                     "price": float(p.get("price", 0) or 0)})
+            except (ValueError, TypeError):
+                rows = []
+        models.save_squad(rows)  # allow saving an empty/partial squad
         return redirect(url_for("my_team"))
 
     squad = models.load_squad()
@@ -104,8 +110,22 @@ def my_team():
         if run <= 1:
             hints.append({"name": p["name"], "team": p["team"],
                           "position": p["position"], "easy_next5": run})
+    # squad economics + validity for the builder UI
+    budget = round(sum(float(p.get("price", 0) or 0) for p in squad), 1)
+    from collections import Counter
+    pos_counts = Counter(p.get("position") for p in squad)
+    club_counts = Counter(p.get("team") for p in squad)
+    validity = {
+        "budget": budget,
+        "remaining": round(100.0 - budget, 1),
+        "counts": {k: pos_counts.get(k, 0) for k in ("GK", "DEF", "MID", "FWD")},
+        "over_club": [t for t, c in club_counts.items() if c > 3],
+        "size": len(squad),
+    }
     return render_template("my_team.html", squad=squad, caps=caps, hints=hints,
-                           gw=gw, scraped_at=snap.get("scraped_at", "—"),
+                           gw=gw, players=players, has_players=bool(players),
+                           validity=validity,
+                           scraped_at=snap.get("scraped_at", "—"),
                            active="my_team")
 
 
@@ -115,12 +135,19 @@ def planner():
     gw_from = int(request.args.get("from", snap.get("next_gw") or GW_FROM_DEFAULT))
     gw_to = int(request.args.get("to", gw_from + 7))
     squad = models.load_squad()
+    players = _players(snap)
     rankings = analytics.compute_rankings(snap["team_stats"])
-    plan = analytics.build_transfer_plan(rankings, snap["fixtures"], squad,
-                                          gw_from, gw_to)
+    # player-level targets per GW + an overall next-N-GW view
+    next_gw = snap.get("next_gw") or GW_FROM_DEFAULT
+    gw_targets = {gw: analytics.gw_player_targets(players, rankings, snap["fixtures"],
+                                                  squad, gw)
+                  for gw in range(gw_from, gw_to + 1)}
+    overall = analytics.overall_targets(players, rankings, snap["fixtures"], squad,
+                                        gw_from, min(gw_from + 4, gw_to))
     trends = analytics.form_trend_data(rankings, snap["fixtures"], gw_from, gw_to)
-    return render_template("planner.html", plan=plan, gw_from=gw_from,
-                           gw_to=gw_to, squad=squad,
+    return render_template("planner.html", gw_targets=gw_targets, overall=overall,
+                           gw_from=gw_from, gw_to=gw_to, squad=squad,
+                           has_players=bool(players),
                            trends=json.dumps(trends),
                            scraped_at=snap.get("scraped_at", "—"),
                            active="planner")

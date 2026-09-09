@@ -129,6 +129,18 @@ def build_player_prices(bootstrap: dict) -> list[dict]:
             "starts": starts,
             # defensive contribution (2025/26+ stat)
             "defcon": p.get("defensive_contribution", 0) or 0,
+            # per-game normalised stats (per 90 minutes played).
+            # ninetys = minutes / 90; guard against divide-by-zero.
+            "defcon_pg": round((p.get("defensive_contribution", 0) or 0)
+                               / max(p.get("minutes", 0) / 90.0, 1e-9), 2)
+                         if p.get("minutes", 0) else 0.0,
+            "xgi_pg": round(_f(p.get("expected_goal_involvements"))
+                            / max(p.get("minutes", 0) / 90.0, 1e-9), 2)
+                      if p.get("minutes", 0) else 0.0,
+            # points per game the player actually appeared in
+            "ppg": _f(p.get("points_per_game")),
+            # total bonus already captured below as "bonus"; expose ninetys too
+            "ninetys": round(p.get("minutes", 0) / 90.0, 1),
             # value + form
             "ppm": round(p.get("total_points", 0) / (p["now_cost"] / 10.0), 2)
                    if p.get("now_cost") else 0,

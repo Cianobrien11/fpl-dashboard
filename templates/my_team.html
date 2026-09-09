@@ -2,12 +2,63 @@
 {% block title %}My Team — FPL Dashboard{% endblock %}
 {% block content %}
 <div class="wrap">
-  <h2>My Team &mdash; Captain Picks for GW{{ gw }}</h2>
-  <p class="hint">Ranked by captaincy appeal: attackers vs leaky defences, defenders vs weak attacks &amp; home advantage.</p>
-  <form method="get" style="margin-bottom:12px">
-    <label class="hint">Gameweek <input type="number" name="gw" value="{{ gw }}" min="1" max="38" style="width:60px"></label>
-    <button class="btn" style="margin-left:8px;padding:5px 14px" type="submit">Update</button>
-  </form>
+  <h2>My Team &mdash; Squad Builder</h2>
+  <p class="hint">Build your 15 from the player database: <b>2 GK, 5 DEF, 5 MID, 3 FWD</b>, max <b>3 per club</b>, &pound;100.0m budget.
+     Pick a position, search, and add players. Captain picks &amp; transfer hints below update from your saved squad.</p>
+
+  {% if not has_players %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> first, then build your team.</div>
+  {% else %}
+
+  <!-- live budget / limits bar -->
+  <div id="statusBar" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:13px">
+    <span>Budget: <b id="spent">0.0</b> / 100.0 &nbsp; (<span id="remain">100.0</span>m left)</span>
+    <span id="cGK" class="badge">GK 0/2</span>
+    <span id="cDEF" class="badge">DEF 0/5</span>
+    <span id="cMID" class="badge">MID 0/5</span>
+    <span id="cFWD" class="badge">FWD 0/3</span>
+    <span id="warn" style="color:var(--red-tx);font-weight:700"></span>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="chart-grid">
+    <!-- picker -->
+    <div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <select id="posFilter">
+          <option value="ALL">All positions</option>
+          <option value="GK">GK</option><option value="DEF">DEF</option>
+          <option value="MID">MID</option><option value="FWD">FWD</option>
+        </select>
+        <input id="searchBox" type="text" placeholder="Search player..." style="flex:1;min-width:120px">
+      </div>
+      <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+        <table><thead><tr><th>Player</th><th>Pos</th><th>Team</th><th>£</th><th>Pts</th><th></th></tr></thead>
+          <tbody id="poolBody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- current squad -->
+    <div>
+      <h2 style="font-size:14px;margin-bottom:6px">Your Squad (<span id="sqCount">0</span>/15)</h2>
+      <div style="border:1px solid var(--border);border-radius:8px;min-height:200px">
+        <table><thead><tr><th>Player</th><th>Pos</th><th>Team</th><th>£</th><th></th></tr></thead>
+          <tbody id="squadBody"></tbody></table>
+      </div>
+      <form method="post" style="margin-top:10px" onsubmit="return prepSubmit()">
+        <input type="hidden" name="squad_json" id="squadJson">
+        <button class="btn" type="submit">Save Squad</button>
+        <button class="btn" type="button" onclick="clearSquad()"
+                style="background:var(--panel2);color:var(--text)">Clear</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% if squad %}
+<div class="wrap">
+  <h2>Captain Picks for GW{{ gw }}</h2>
+  <p class="hint">From your saved squad, ranked by matchup appeal.</p>
   <table>
     <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Opponent</th><th>Appeal</th></tr></thead>
     <tbody>
@@ -15,8 +66,7 @@
       <tr class="{{ 't1' if loop.index0<3 else 't2' if loop.index0<6 else 't3' }}">
         <td class="rk">{{ loop.index }}</td>
         <td class="tn">{% if loop.index0==0 %}&#128081; {% endif %}{{ c.name }}</td>
-        <td>{{ c.position }}</td>
-        <td>{{ c.team }}</td>
+        <td>{{ c.position }}</td><td>{{ c.team }}</td>
         <td class="mono">{{ c.opponent }} ({{ c.venue }})</td>
         <td class="mono cnt-hi">{{ '%.2f'|format(c.appeal) }}</td>
       </tr>
@@ -24,11 +74,9 @@
     </tbody>
   </table>
 </div>
-
 {% if hints %}
 <div class="wrap">
   <h2>&#9888;&#65039; Transfer Watch (poor next-5 run)</h2>
-  <p class="hint">Players whose team has 1 or fewer easy fixtures in the next 5 gameweeks — candidates to move on.</p>
   <table>
     <thead><tr><th>Player</th><th>Pos</th><th>Team</th><th>Easy next 5</th></tr></thead>
     <tbody>
@@ -40,14 +88,88 @@
   </table>
 </div>
 {% endif %}
+{% endif %}
 
-<div class="wrap">
-  <h2>Edit Squad</h2>
-  <p class="hint">One player per line: <code>Name | Team | Position | Price</code>. Position is GK/DEF/MID/FWD. Team must match a Premier League name (e.g. Man City, Nottm Forest).</p>
-  <form method="post">
-    <textarea name="squad">{% for p in squad %}{{ p.name }} | {{ p.team }} | {{ p.position }} | {{ p.price }}
-{% endfor %}</textarea>
-    <div style="margin-top:10px"><button class="btn" type="submit">Save Squad</button></div>
-  </form>
-</div>
+{% if has_players %}
+<script>
+const POOL = {{ players|tojson }};
+const SAVED = {{ squad|tojson }};
+const LIMITS = {GK:2, DEF:5, MID:5, FWD:3};
+let squad = SAVED.map(p => ({name:p.name, team:p.team, position:p.position, price:+p.price||0}));
+
+const poolBody=document.getElementById('poolBody');
+const squadBody=document.getElementById('squadBody');
+const posFilter=document.getElementById('posFilter');
+const searchBox=document.getElementById('searchBox');
+
+function inSquad(p){return squad.some(s=>s.name===p.name && s.team===p.team);}
+function counts(){const c={GK:0,DEF:0,MID:0,FWD:0};squad.forEach(s=>c[s.position]=(c[s.position]||0)+1);return c;}
+function clubCounts(){const c={};squad.forEach(s=>c[s.team]=(c[s.team]||0)+1);return c;}
+function spent(){return squad.reduce((t,s)=>t+(+s.price||0),0);}
+
+function canAdd(p){
+  if(squad.length>=15) return "Squad full (15)";
+  if(inSquad(p)) return "Already picked";
+  const c=counts();
+  if((c[p.position]||0) >= LIMITS[p.position]) return p.position+" full";
+  if(((clubCounts()[p.team])||0) >= 3) return "3 from "+p.team+" already";
+  if(spent()+(+p.price||0) > 100.0001) return "Over budget";
+  return null;
+}
+
+function renderPool(){
+  const pos=posFilter.value, q=searchBox.value.toLowerCase();
+  let rows=POOL.filter(p=>(pos==='ALL'||p.position===pos) && p.name.toLowerCase().includes(q));
+  rows.sort((a,b)=>(b.points||0)-(a.points||0));
+  rows=rows.slice(0,120);
+  poolBody.innerHTML='';
+  rows.forEach(p=>{
+    const reason=canAdd(p);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="tn">${p.name}</td><td>${p.position}</td><td class="mono">${p.team}</td>
+      <td class="mono">${(+p.price).toFixed(1)}</td><td class="mono">${p.points||0}</td>
+      <td>${inSquad(p)?'<span class="mono" style="color:var(--muted)">in</span>':
+        `<button class="btn" style="padding:2px 8px" ${reason?'disabled title="'+reason+'"':''}
+          onclick='addP(${JSON.stringify(p).replace(/'/g,"&#39;")})'>+</button>`}</td>`;
+    poolBody.appendChild(tr);
+  });
+}
+function renderSquad(){
+  squadBody.innerHTML='';
+  const order={GK:0,DEF:1,MID:2,FWD:3};
+  [...squad].sort((a,b)=>order[a.position]-order[b.position]).forEach(s=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="tn">${s.name}</td><td>${s.position}</td><td class="mono">${s.team}</td>
+      <td class="mono">${(+s.price).toFixed(1)}</td>
+      <td><button class="btn" style="padding:2px 8px;background:var(--red-bg);color:var(--red-tx)"
+        onclick='rmP(${JSON.stringify(s).replace(/'/g,"&#39;")})'>&times;</button></td>`;
+    squadBody.appendChild(tr);
+  });
+  document.getElementById('sqCount').textContent=squad.length;
+  updateStatus();
+}
+function updateStatus(){
+  const c=counts(), sp=spent();
+  document.getElementById('spent').textContent=sp.toFixed(1);
+  document.getElementById('remain').textContent=(100-sp).toFixed(1);
+  ['GK','DEF','MID','FWD'].forEach(k=>{
+    const el=document.getElementById('c'+k);
+    el.textContent=`${k} ${c[k]||0}/${LIMITS[k]}`;
+    el.className='badge '+((c[k]||0)===LIMITS[k]?'b-clear': (c[k]||0)>LIMITS[k]?'b-tight':'');
+  });
+  const over=Object.entries(clubCounts()).filter(([t,n])=>n>3).map(([t])=>t);
+  let w=[];
+  if(sp>100) w.push('Over budget!');
+  if(over.length) w.push('>3 from '+over.join(', '));
+  document.getElementById('warn').textContent=w.join(' · ');
+}
+function addP(p){const r=canAdd(p);if(r){return;}squad.push({name:p.name,team:p.team,position:p.position,price:+p.price||0});renderSquad();renderPool();}
+function rmP(s){squad=squad.filter(x=>!(x.name===s.name&&x.team===s.team));renderSquad();renderPool();}
+function clearSquad(){squad=[];renderSquad();renderPool();}
+function prepSubmit(){document.getElementById('squadJson').value=JSON.stringify(squad);return true;}
+
+posFilter.onchange=renderPool; searchBox.oninput=renderPool;
+renderSquad(); renderPool();
+</script>
+{% endif %}
 {% endblock %}
