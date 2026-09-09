@@ -87,12 +87,26 @@ def build_fixture_map(bootstrap: dict, fixtures: list[dict]) -> dict:
 
 
 def build_player_prices(bootstrap: dict) -> list[dict]:
-    """Return a list of {name, team, position, price, form, points}."""
+    """
+    Return rich per-player records from the FPL bootstrap.
+
+    Includes points, price, form, ownership, expected stats (xG/xA/xGI/xGC),
+    defensive contribution, set-piece orders, availability, and the latest
+    price change — everything the new pages need, all from the FPL API.
+    """
     id_to_name = {t["id"]: FPL_NAME_MAP.get(t.get("short_name", "").upper(), t["name"])
                   for t in bootstrap.get("teams", [])}
     pos_map = {1: "GK", 2: "DEF", 3: "MID", 4: "FWD"}
+
+    def _f(v):  # safe float
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+
     players = []
     for p in bootstrap.get("elements", []):
+        starts = p.get("starts", 0) or 0
         players.append({
             "name": p["web_name"],
             "team": id_to_name.get(p["team"], "?"),
@@ -101,6 +115,37 @@ def build_player_prices(bootstrap: dict) -> list[dict]:
             "form": float(p.get("form") or 0),
             "points": p.get("total_points", 0),
             "selected_by": float(p.get("selected_by_percent") or 0),
+            # expected stats (season totals from the API)
+            "xg": _f(p.get("expected_goals")),
+            "xa": _f(p.get("expected_assists")),
+            "xgi": _f(p.get("expected_goal_involvements")),
+            "xgc": _f(p.get("expected_goals_conceded")),
+            # actual returns
+            "goals": p.get("goals_scored", 0),
+            "assists": p.get("assists", 0),
+            "clean_sheets": p.get("clean_sheets", 0),
+            "bonus": p.get("bonus", 0),
+            "minutes": p.get("minutes", 0),
+            "starts": starts,
+            # defensive contribution (2025/26+ stat)
+            "defcon": p.get("defensive_contribution", 0) or 0,
+            # value + form
+            "ppm": round(p.get("total_points", 0) / (p["now_cost"] / 10.0), 2)
+                   if p.get("now_cost") else 0,
+            "ict": _f(p.get("ict_index")),
+            # set-piece order (1 = first-choice taker; None = not on them)
+            "pen_order": p.get("penalties_order"),
+            "ck_order": p.get("corners_and_indirect_freekicks_order"),
+            "fk_order": p.get("direct_freekicks_order"),
+            # price movement
+            "cost_change_event": (p.get("cost_change_event") or 0) / 10.0,
+            "cost_change_start": (p.get("cost_change_start") or 0) / 10.0,
+            "transfers_in_event": p.get("transfers_in_event", 0),
+            "transfers_out_event": p.get("transfers_out_event", 0),
+            # availability
+            "status": p.get("status", "a"),  # a=available i=injured s=susp d=doubt u=unavail
+            "chance": p.get("chance_of_playing_next_round"),
+            "news": (p.get("news") or "").strip(),
         })
     return players
 

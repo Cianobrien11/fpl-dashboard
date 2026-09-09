@@ -307,3 +307,91 @@ def build_transfer_plan(rankings: dict, fixtures: dict, squad: list[dict],
             "move": worst,
         })
     return plan
+
+
+# ==========================================================================
+# Player-level helpers (fed by scraper.build_player_prices -> snapshot["players"])
+# ==========================================================================
+
+_POS_ORDER = {"GK": 0, "DEF": 1, "MID": 2, "FWD": 3}
+
+
+def filter_sort_players(players: list, position: str = "ALL", team: str = "ALL",
+                        sort: str = "points", search: str = "",
+                        limit: int = 60) -> list:
+    """Filter by position/team/search and sort by a numeric field."""
+    rows = []
+    for p in players:
+        if position != "ALL" and p.get("position") != position:
+            continue
+        if team != "ALL" and p.get("team") != team:
+            continue
+        if search and search.lower() not in p.get("name", "").lower():
+            continue
+        rows.append(p)
+    valid = {"points", "price", "form", "xg", "xa", "xgi", "defcon",
+             "selected_by", "ppm", "ict", "goals", "assists"}
+    key = sort if sort in valid else "points"
+    rows.sort(key=lambda r: r.get(key, 0) or 0, reverse=True)
+    return rows[:limit]
+
+
+def set_piece_takers(players: list) -> dict:
+    """
+    Return {team: {pens:[names], corners:[names], freekicks:[names]}}
+    ordered by the FPL set-piece order (1 = first choice).
+    """
+    out = {}
+    for p in players:
+        t = p.get("team", "?")
+        entry = out.setdefault(t, {"pens": [], "corners": [], "freekicks": []})
+        if p.get("pen_order"):
+            entry["pens"].append((p["pen_order"], p["name"]))
+        if p.get("ck_order"):
+            entry["corners"].append((p["ck_order"], p["name"]))
+        if p.get("fk_order"):
+            entry["freekicks"].append((p["fk_order"], p["name"]))
+    for t, e in out.items():
+        for k in e:
+            e[k] = [n for _, n in sorted(e[k])][:3]
+    return {t: e for t, e in sorted(out.items())
+            if e["pens"] or e["corners"] or e["freekicks"]}
+
+
+def price_changes(players: list) -> dict:
+    """Return {'risers': [...], 'fallers': [...]} by season price change."""
+    changed = [p for p in players if p.get("cost_change_start", 0)]
+    risers = sorted((p for p in changed if p["cost_change_start"] > 0),
+                    key=lambda p: -p["cost_change_start"])[:20]
+    fallers = sorted((p for p in changed if p["cost_change_start"] < 0),
+                     key=lambda p: p["cost_change_start"])[:20]
+    return {"risers": risers, "fallers": fallers}
+
+
+def availability_flags(players: list) -> list:
+    """Players who are not fully available (injured / doubt / suspended)."""
+    flagged = []
+    for p in players:
+        not_avail = p.get("status", "a") != "a"
+        doubtful = p.get("chance") is not None and p.get("chance") < 100
+        if (not_avail and p.get("minutes", 0) > 0) or doubtful:
+            flagged.append(p)
+    order = {"i": 0, "s": 1, "u": 2, "d": 3, "a": 4}
+    flagged.sort(key=lambda p: (order.get(p.get("status", "a"), 5),
+                                -(p.get("selected_by", 0))))
+    return flagged[:40]
+
+
+def value_finder(players: list, min_minutes: int = 90) -> dict:
+    """Best points-per-million by position (min minutes filter)."""
+    out = {}
+    for pos in ("GK", "DEF", "MID", "FWD"):
+        pool = [p for p in players
+                if p.get("position") == pos and p.get("minutes", 0) >= min_minutes]
+        pool.sort(key=lambda p: p.get("ppm", 0), reverse=True)
+        out[pos] = pool[:8]
+    return out
+
+
+STATUS_LABEL = {"a": "Available", "i": "Injured", "s": "Suspended",
+                "d": "Doubtful", "u": "Unavailable"}

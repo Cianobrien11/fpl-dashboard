@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Availability — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>Availability &amp; Injury Flags</h2>
+  <p class="hint">Players who are injured, suspended, doubtful, or on a reduced chance of playing the next round.
+     Check this before every deadline so you don't captain or field someone who won't start.</p>
+  {% if not has_data %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% else %}
+  {% if not flagged %}
+    <p class="hint" style="color:var(--primary)">&#10003; No availability concerns among players with minutes — everyone's fit.</p>
+  {% else %}
+  <table>
+    <thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Status</th><th>Chance</th><th>%Own</th><th>News</th></tr></thead>
+    <tbody>
+    {% for p in flagged %}
+      <tr>
+        <td class="tn">{{ p.name }}</td>
+        <td class="mono">{{ p.team }}</td>
+        <td>{{ p.position }}</td>
+        <td><span class="fx {{ 'fx-r' if p.status in ['i','s','u'] else 'fx-y' }}">{{ labels.get(p.status, p.status) }}</span></td>
+        <td class="mono">{{ (p.chance ~ '%') if p.chance is not none else '—' }}</td>
+        <td class="mono">{{ '%.1f'|format(p.selected_by) }}%</td>
+        <td class="hint" style="margin:0">{{ p.news or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

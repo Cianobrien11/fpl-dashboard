@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Value — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>Value Finder &mdash; best points per &pound;m</h2>
+  <p class="hint">Top value picks by position (points &divide; price), minimum 90 minutes played. Great for finding cheap enablers and differentials.</p>
+  {% if not has_data %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% else %}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="chart-grid">
+    {% for pos in ['GK','DEF','MID','FWD'] %}
+    <div>
+      <h2 style="font-size:14px;margin-bottom:6px">{{ {'GK':'Goalkeepers','DEF':'Defenders','MID':'Midfielders','FWD':'Forwards'}[pos] }}</h2>
+      <table>
+        <thead><tr><th>Player</th><th>Team</th><th>£</th><th>Pts</th><th>Val</th></tr></thead>
+        <tbody>
+        {% for p in val[pos] %}
+          <tr>
+            <td class="tn">{{ p.name }}</td>
+            <td class="mono">{{ p.team }}</td>
+            <td class="mono">{{ '%.1f'|format(p.price) }}</td>
+            <td class="mono">{{ p.points }}</td>
+            <td class="mono cnt-hi">{{ '%.2f'|format(p.ppm) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

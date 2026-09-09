@@ -126,6 +126,66 @@ def planner():
                            active="planner")
 
 
+# --------------------------------------------------------------------------
+# Player-data pages (all fed by the FPL API player list)
+# --------------------------------------------------------------------------
+def _players(snap: dict) -> list:
+    return snap.get("players", []) or []
+
+
+@app.route("/players")
+def players_page():
+    snap = _ensure_data()
+    pl = _players(snap)
+    position = request.args.get("position", "ALL")
+    team = request.args.get("team", "ALL")
+    sort = request.args.get("sort", "points")
+    search = request.args.get("q", "").strip()
+    rows = analytics.filter_sort_players(pl, position, team, sort, search)
+    teams = sorted({p["team"] for p in pl}) if pl else []
+    return render_template("players.html", rows=rows, teams=teams,
+                           position=position, team=team, sort=sort, search=search,
+                           has_data=bool(pl), scraped_at=snap.get("scraped_at", "—"),
+                           active="players")
+
+
+@app.route("/set-pieces")
+def set_pieces_page():
+    snap = _ensure_data()
+    takers = analytics.set_piece_takers(_players(snap))
+    return render_template("set_pieces.html", takers=takers,
+                           has_data=bool(_players(snap)),
+                           scraped_at=snap.get("scraped_at", "—"), active="set_pieces")
+
+
+@app.route("/prices")
+def prices_page():
+    snap = _ensure_data()
+    pc = analytics.price_changes(_players(snap))
+    return render_template("prices.html", risers=pc["risers"], fallers=pc["fallers"],
+                           has_data=bool(_players(snap)),
+                           scraped_at=snap.get("scraped_at", "—"), active="prices")
+
+
+@app.route("/availability")
+def availability_page():
+    snap = _ensure_data()
+    flagged = analytics.availability_flags(_players(snap))
+    return render_template("availability.html", flagged=flagged,
+                           labels=analytics.STATUS_LABEL,
+                           has_data=bool(_players(snap)),
+                           scraped_at=snap.get("scraped_at", "—"), active="availability")
+
+
+@app.route("/value")
+def value_page():
+    snap = _ensure_data()
+    val = analytics.value_finder(_players(snap))
+    return render_template("value.html", val=val,
+                           has_data=bool(_players(snap)),
+                           scraped_at=snap.get("scraped_at", "—"), active="value")
+
+
 def _do_refresh() -> dict:
     """Scrape fresh data and merge it over the cached snapshot.
 
@@ -138,6 +198,8 @@ def _do_refresh() -> dict:
         snap["team_stats"].update(bundle["team_stats"])
     if bundle.get("fixtures"):
         snap["fixtures"] = bundle["fixtures"]
+    if bundle.get("players"):
+        snap["players"] = bundle["players"]
     if bundle.get("current_gw"):
         snap["current_gw"] = bundle["current_gw"]
     if bundle.get("next_gw"):

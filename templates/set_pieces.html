@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Set Pieces — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>Set-Piece Takers</h2>
+  <p class="hint">First-choice penalty, corner &amp; direct free-kick takers per team (from the FPL set-piece order).
+     Penalties especially add a big points ceiling — worth knowing before you transfer in an attacker.</p>
+  {% if not has_data %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% else %}
+  <table>
+    <thead><tr><th>Team</th><th>&#9917; Penalties</th><th>&#9971; Corners</th><th>&#127937; Free-kicks</th></tr></thead>
+    <tbody>
+    {% for team, e in takers.items() %}
+      <tr>
+        <td class="tn">{{ team }}</td>
+        <td class="mono">{{ e.pens|join(', ') or '—' }}</td>
+        <td class="mono">{{ e.corners|join(', ') or '—' }}</td>
+        <td class="mono">{{ e.freekicks|join(', ') or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint" style="margin-top:8px">Order reflects the club's designated taker list; first name = primary.</p>
+  {% endif %}
+</div>
+{% endblock %}

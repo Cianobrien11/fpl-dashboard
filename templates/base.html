@@ -86,6 +86,11 @@ form.inline{display:inline}
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active=='dashboard' }}">Targets</a>
     <a href="{{ url_for('predictions') }}" class="{{ 'active' if active=='predictions' }}">Predictions</a>
     <a href="{{ url_for('planner') }}" class="{{ 'active' if active=='planner' }}">Planner</a>
+    <a href="{{ url_for('players_page') }}" class="{{ 'active' if active=='players' }}">Players</a>
+    <a href="{{ url_for('value_page') }}" class="{{ 'active' if active=='value' }}">Value</a>
+    <a href="{{ url_for('set_pieces_page') }}" class="{{ 'active' if active=='set_pieces' }}">Set Pieces</a>
+    <a href="{{ url_for('prices_page') }}" class="{{ 'active' if active=='prices' }}">Prices</a>
+    <a href="{{ url_for('availability_page') }}" class="{{ 'active' if active=='availability' }}">Availability</a>
     <a href="{{ url_for('my_team') }}" class="{{ 'active' if active=='my_team' }}">My Team</a>
     <form class="inline" method="post" action="{{ url_for('update') }}">
       <button class="refresh" type="submit">&#8635; Refresh Data</button>

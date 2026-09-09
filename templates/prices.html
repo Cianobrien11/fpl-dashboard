@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Prices — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>Price Changes</h2>
+  <p class="hint">Season-to-date price movement. Rising players are in demand (buy before they climb more);
+     falling players are being sold off. Transfer momentum this gameweek shown alongside.</p>
+  {% if not has_data %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% else %}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="chart-grid">
+    <div>
+      <h2 style="font-size:14px;margin-bottom:6px;color:var(--primary)">&#9650; Risers</h2>
+      <table>
+        <thead><tr><th>Player</th><th>Team</th><th>£ now</th><th>&Delta; season</th><th>In (GW)</th></tr></thead>
+        <tbody>
+        {% for p in risers %}
+          <tr>
+            <td class="tn">{{ p.name }}</td><td class="mono">{{ p.team }}</td>
+            <td class="mono">{{ '%.1f'|format(p.price) }}</td>
+            <td class="mono cnt-hi">+{{ '%.1f'|format(p.cost_change_start) }}</td>
+            <td class="mono">{{ '{:,}'.format(p.transfers_in_event) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h2 style="font-size:14px;margin-bottom:6px;color:var(--red-tx)">&#9660; Fallers</h2>
+      <table>
+        <thead><tr><th>Player</th><th>Team</th><th>£ now</th><th>&Delta; season</th><th>Out (GW)</th></tr></thead>
+        <tbody>
+        {% for p in fallers %}
+          <tr>
+            <td class="tn">{{ p.name }}</td><td class="mono">{{ p.team }}</td>
+            <td class="mono">{{ '%.1f'|format(p.price) }}</td>
+            <td class="mono" style="color:var(--red-tx)">{{ '%.1f'|format(p.cost_change_start) }}</td>
+            <td class="mono">{{ '{:,}'.format(p.transfers_out_event) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

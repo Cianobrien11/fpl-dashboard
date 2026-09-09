@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Players — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>Player Stats</h2>
+  <p class="hint">Every player from the FPL API. Filter by position, team, or name and sort by any metric.
+     xG / xA / xGI are season expected stats; DefCon = defensive contribution points; %Own = ownership.</p>
+
+  {% if not has_data %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% else %}
+  <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+    <input type="text" name="q" value="{{ search }}" placeholder="Search name..." style="min-width:160px">
+    <select name="position">
+      {% for p in ['ALL','GK','DEF','MID','FWD'] %}
+        <option value="{{ p }}" {{ 'selected' if position==p }}>{{ 'All positions' if p=='ALL' else p }}</option>
+      {% endfor %}
+    </select>
+    <select name="team">
+      <option value="ALL" {{ 'selected' if team=='ALL' }}>All teams</option>
+      {% for t in teams %}<option value="{{ t }}" {{ 'selected' if team==t }}>{{ t }}</option>{% endfor %}
+    </select>
+    <select name="sort">
+      {% for key,label in [('points','Points'),('form','Form'),('price','Price'),('ppm','Value (pts/£m)'),
+                           ('xg','xG'),('xa','xA'),('xgi','xGI'),('defcon','DefCon'),
+                           ('goals','Goals'),('assists','Assists'),('selected_by','Ownership'),('ict','ICT')] %}
+        <option value="{{ key }}" {{ 'selected' if sort==key }}>Sort: {{ label }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn" type="submit">Apply</button>
+  </form>
+
+  <table>
+    <thead><tr>
+      <th>Player</th><th>Pos</th><th>Team</th><th>£</th><th>Pts</th><th>Form</th>
+      <th>Val</th><th>xG</th><th>xA</th><th>xGI</th><th>DefCon</th><th>G</th><th>A</th><th>%Own</th>
+    </tr></thead>
+    <tbody>
+    {% for p in rows %}
+      <tr>
+        <td class="tn">{{ p.name }}{% if p.status != 'a' %} <span class="fx fx-r" title="{{ p.news }}">!</span>{% endif %}</td>
+        <td>{{ p.position }}</td>
+        <td class="mono">{{ p.team }}</td>
+        <td class="mono">{{ '%.1f'|format(p.price) }}</td>
+        <td class="mono cnt-hi">{{ p.points }}</td>
+        <td class="mono">{{ '%.1f'|format(p.form) }}</td>
+        <td class="mono">{{ '%.2f'|format(p.ppm) }}</td>
+        <td class="mono">{{ '%.1f'|format(p.xg) }}</td>
+        <td class="mono">{{ '%.1f'|format(p.xa) }}</td>
+        <td class="mono">{{ '%.1f'|format(p.xgi) }}</td>
+        <td class="mono">{{ p.defcon }}</td>
+        <td class="mono">{{ p.goals }}</td>
+        <td class="mono">{{ p.assists }}</td>
+        <td class="mono">{{ '%.1f'|format(p.selected_by) }}%</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint" style="margin-top:8px">Showing top {{ rows|length }} by selected sort.</p>
+  {% endif %}
+</div>
+{% endblock %}

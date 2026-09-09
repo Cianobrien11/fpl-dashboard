@@ -10,6 +10,11 @@ match predictions, and your own squad tracker — with weekly auto-scraping.
 | **Targets** (`/`) | Three ranked 1–20 tables — Clean Sheets, Goals Scored, Conceding — with a colour-coded fixture grid across any gameweek window. Toggle Easy-only vs Easy+Medium. Plus **xG/xGA scatter charts** (finishing vs luck) and **fixture-ease trend lines**. |
 | **Predictions** (`/predictions`) | xG-model scoreline predictions for any gameweek (each team's attacking xG vs the opponent's defensive xGA, home-adjusted). |
 | **Planner** (`/planner`) | Gameweek-by-gameweek transfer guide: flags your weakest fixture each week, suggests a stronger team to move toward, and gives the captain pick. Includes the fixture-ease trend chart. |
+| **Players** (`/players`) | Searchable, sortable table of every player: points, price, form, xG, xA, xGI, DefCon, goals, assists, ownership. Filter by position / team / name. |
+| **Value** (`/value`) | Best points-per-£m picks by position (min 90 mins) — cheap enablers & differentials. |
+| **Set Pieces** (`/set-pieces`) | First-choice penalty / corner / free-kick takers per team. |
+| **Prices** (`/prices`) | Season price risers & fallers with this week's transfer momentum. |
+| **Availability** (`/availability`) | Injured / suspended / doubtful players with chance-of-playing and news. |
 | **My Team** (`/my-team`) | Your squad, captaincy rankings for the week, a transfer watch-list, and an editable squad box. |
 | **Refresh Data** | Scrapes FBRef (xG/xGA/shots) + the official FPL API (fixtures, prices, gameweeks) and recalculates everything. |
 
