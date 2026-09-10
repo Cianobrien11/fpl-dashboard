@@ -237,43 +237,87 @@ def fetch_fbref_team_stats() -> dict[str, dict]:
 #   shots + SoT  -> FPL element-summary endpoint (per player)
 #   key passes   -> FBRef player passing table (single page)
 # --------------------------------------------------------------------------
+# FBRef squad names -> our canonical names (for surname+squad matching)
+_FBREF_SQUAD = {
+    "Arsenal": "Arsenal", "Aston Villa": "Aston Villa", "Bournemouth": "Bournemouth",
+    "Brentford": "Brentford", "Brighton": "Brighton", "Chelsea": "Chelsea",
+    "Coventry City": "Coventry", "Crystal Palace": "Crystal Palace",
+    "Everton": "Everton", "Fulham": "Fulham", "Hull City": "Hull City",
+    "Ipswich Town": "Ipswich", "Leeds United": "Leeds", "Liverpool": "Liverpool",
+    "Manchester City": "Man City", "Manchester Utd": "Man United",
+    "Newcastle Utd": "Newcastle", "Nott'ham Forest": "Nottm Forest",
+    "Nottingham Forest": "Nottm Forest", "Tottenham": "Tottenham",
+    "Sunderland": "Sunderland",
+}
+
+
+def _flatten_cols(tbl):
+    """Flatten a possibly multi-level FBRef header to single-level names."""
+    cols = []
+    for c in tbl.columns:
+        if isinstance(c, tuple):
+            # use the last non-'Unnamed' level
+            parts = [str(x) for x in c if x and not str(x).startswith("Unnamed")]
+            cols.append(parts[-1] if parts else str(c[-1]))
+        else:
+            cols.append(str(c))
+    tbl.columns = cols
+    return tbl
+
+
 def _fbref_player_table(url: str, need_cols: set):
-    """Fetch a FBRef player table and return the first DataFrame with need_cols."""
+    """
+    Fetch a FBRef player table and return the first flattened DataFrame that
+    contains all need_cols. Robust to multi-level headers.
+    """
     import io
     import pandas as pd
     resp = _get(url, timeout=30)
     html = resp.text.replace("<!--", "").replace("-->", "")
+    best = None
     for tbl in pd.read_html(io.StringIO(html)):
-        cols = [str(c[-1]) if isinstance(c, tuple) else str(c) for c in tbl.columns]
-        if need_cols.issubset(set(cols)):
-            tbl.columns = cols
-            return tbl
-    return None
+        t = _flatten_cols(tbl.copy())
+        if need_cols.issubset(set(t.columns)):
+            # prefer the widest table (the full player table, not a mini one)
+            if best is None or len(t) > len(best):
+                best = t
+    return best
 
 
-def _match_players_by_surname(players: list[dict], value_by_surname: dict, field: str) -> None:
-    """Assign value_by_surname[surname] to player[field], matched on last name."""
+def _norm_squad(raw: str) -> str:
+    raw = str(raw).strip()
+    return _FBREF_SQUAD.get(raw, raw)
+
+
+def _assign(players, by_key, field):
+    """
+    Assign values keyed by (surname_lower, squad) to players, falling back to
+    surname-only when the squad-qualified key isn't present.
+    """
+    surname_only = {}
+    for (last, squad), val in by_key.items():
+        surname_only.setdefault(last, val)
     for p in players:
-        parts = p["name"].split()
+        parts = p.get("name", "").split()
         if not parts:
             continue
         last = parts[-1].lower()
-        if last in value_by_surname:
-            p[field] = value_by_surname[last]
+        key = (last, p.get("team"))
+        if key in by_key:
+            p[field] = by_key[key]
+        elif last in surname_only:
+            p[field] = surname_only[last]
 
 
 def enrich_shots_from_fbref(players: list[dict]) -> None:
     """
-    Add shots_90 / sot_90 from FBRef's player shooting page in a SINGLE request.
-
-    Far faster and more reliable than one FPL element-summary call per player
-    (which timed out on constrained hosts). FBRef exposes Sh/90 and SoT/90
-    directly; we fall back to computing them from Sh/SoT and 90s if needed.
-    Matched on surname. Best-effort; mutates in place.
+    Add shots_90 / sot_90 from FBRef's player shooting page (single request).
+    Computes per-90 from stable totals (Sh, SoT, 90s) and matches on
+    surname + squad. Best-effort; mutates in place.
     """
     tbl = _fbref_player_table(
         "https://fbref.com/en/comps/9/shooting/Premier-League-Stats",
-        {"Player", "Sh"})
+        {"Player", "Sh", "SoT"})
     if tbl is None:
         return
     sh_by, sot_by = {}, {}
@@ -282,67 +326,47 @@ def enrich_shots_from_fbref(players: list[dict]) -> None:
         if not name or name == "Player":
             continue
         try:
-            nineties = float(str(row.get("90s", "0")).replace(",", "") or 0)
-            # prefer FBRef's own per-90 columns; else compute from totals
-            sh90 = row.get("Sh/90")
-            sot90 = row.get("SoT/90")
-            if sh90 is None or str(sh90) == "nan":
-                sh = float(row.get("Sh", 0) or 0)
-                sh90 = (sh / nineties) if nineties else 0
-            if sot90 is None or str(sot90) == "nan":
-                sot = float(row.get("SoT", 0) or 0)
-                sot90 = (sot / nineties) if nineties else 0
-            last = name.split()[-1].lower()
-            sh_by[last] = round(float(sh90), 2)
-            sot_by[last] = round(float(sot90), 2)
+            n90 = float(str(row.get("90s", "0")).replace(",", "") or 0)
+            if n90 <= 0:
+                continue
+            sh = float(str(row.get("Sh", 0)).replace(",", "") or 0)
+            sot = float(str(row.get("SoT", 0)).replace(",", "") or 0)
         except (ValueError, TypeError):
             continue
-    _match_players_by_surname(players, sh_by, "shots_90")
-    _match_players_by_surname(players, sot_by, "sot_90")
+        last = name.split()[-1].lower()
+        squad = _norm_squad(row.get("Squad", ""))
+        sh_by[(last, squad)] = round(sh / n90, 2)
+        sot_by[(last, squad)] = round(sot / n90, 2)
+    _assign(players, sh_by, "shots_90")
+    _assign(players, sot_by, "sot_90")
 
 
 def enrich_keypasses_from_fbref(players: list[dict]) -> None:
     """
-    Add kp_90 (key passes per 90) to each player from FBRef's passing table.
-    Matched on surname + team. Best-effort; mutates in place.
+    Add kp_90 (key passes per 90) from FBRef's passing page (single request).
+    Computes per-90 from KP total and 90s; matches on surname + squad.
     """
-    import io
-    import pandas as pd
-
-    url = "https://fbref.com/en/comps/9/passing/Premier-League-Stats"
-    resp = _get(url, timeout=30)
-    html = resp.text.replace("<!--", "").replace("-->", "")
-    tables = pd.read_html(io.StringIO(html))
-    passing = None
-    for tbl in tables:
-        cols = [str(c[-1]) if isinstance(c, tuple) else str(c) for c in tbl.columns]
-        if "Player" in cols and ("KP" in cols):
-            tbl.columns = cols
-            passing = tbl
-            break
-    if passing is None:
+    tbl = _fbref_player_table(
+        "https://fbref.com/en/comps/9/passing/Premier-League-Stats",
+        {"Player", "KP"})
+    if tbl is None:
         return
-
-    # build {lastname_lower: kp_per90}
-    kp_by_name: dict[str, float] = {}
-    for _, row in passing.iterrows():
+    kp_by = {}
+    for _, row in tbl.iterrows():
         name = str(row.get("Player", "")).strip()
         if not name or name == "Player":
             continue
         try:
-            kp = float(row.get("KP", 0) or 0)
-            mins = float(str(row.get("Min", "0")).replace(",", "") or 0)
+            n90 = float(str(row.get("90s", "0")).replace(",", "") or 0)
+            if n90 <= 0:
+                continue
+            kp = float(str(row.get("KP", 0)).replace(",", "") or 0)
         except (ValueError, TypeError):
             continue
-        if mins <= 0:
-            continue
         last = name.split()[-1].lower()
-        kp_by_name[last] = round(kp / (mins / 90.0), 2)
-
-    for p in players:
-        last = p["name"].split()[-1].lower()
-        if last in kp_by_name:
-            p["kp_90"] = kp_by_name[last]
+        squad = _norm_squad(row.get("Squad", ""))
+        kp_by[(last, squad)] = round(kp / n90, 2)
+    _assign(players, kp_by, "kp_90")
 
 
 def scrape_all() -> dict[str, Any]:
