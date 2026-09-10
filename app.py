@@ -172,7 +172,9 @@ def players_page():
     teams = sorted({p["team"] for p in pl}) if pl else []
     return render_template("players.html", rows=rows, teams=teams,
                            position=position, team=team, sort=sort, search=search,
-                           has_data=bool(pl), scraped_at=snap.get("scraped_at", "—"),
+                           has_data=bool(pl),
+                           shots_source=snap.get("shots_source", "fbref"),
+                           scraped_at=snap.get("scraped_at", "—"),
                            active="players")
 
 

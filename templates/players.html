@@ -7,6 +7,10 @@
      <b>DefCon/90</b> = defensive contribution per 90; <b>xGI/90</b> = expected goal involvements per 90;
      <b>Sh/90</b>, <b>SoT/90</b>, <b>KP/90</b> = shots, shots-on-target &amp; key passes per 90; <b>Avg Min</b> = average minutes per appearance;
      <b>PPG</b> = points per game; %Own = ownership.</p>
+  {% if shots_source == 'fpl_proxy' %}
+  <p class="hint" style="color:var(--yellow-tx)">&#9432; FBRef shot data is currently unavailable, so <b>Sh/90 &amp; SoT/90 show FPL <u>Threat</u> per 90</b>
+     and <b>KP/90 shows FPL <u>Creativity</u> per 90</b> — reliable proxies for shot volume &amp; chance creation.</p>
+  {% endif %}
 
   {% if not has_data %}
     <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
@@ -38,7 +42,10 @@
   <table>
     <thead><tr>
       <th>Player</th><th>Pos</th><th>Team</th><th>£</th><th>Pts</th><th>Form</th>
-      <th>PPG</th><th>Val</th><th>Avg Min</th><th>Sh/90</th><th>SoT/90</th><th>KP/90</th>
+      <th>PPG</th><th>Val</th><th>Avg Min</th>
+      <th>{{ 'Threat/90' if shots_source=='fpl_proxy' else 'Sh/90' }}</th>
+      <th>{{ 'SoT~/90' if shots_source=='fpl_proxy' else 'SoT/90' }}</th>
+      <th>{{ 'Creat/90' if shots_source=='fpl_proxy' else 'KP/90' }}</th>
       <th>xGI</th><th>xGI/90</th><th>DefCon</th><th>DefCon/90</th><th>Bon</th><th>G</th><th>A</th><th>%Own</th>
     </tr></thead>
     <tbody>

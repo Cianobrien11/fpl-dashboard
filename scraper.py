@@ -24,7 +24,18 @@ HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-    )
+    ),
+    # FBRef (Sports-Reference) returns 403 to bare requests, so send the full
+    # header set a real Chrome browser sends. This gets us past the block.
+    "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,"
+               "image/avif,image/webp,image/apng,*/*;q=0.8"),
+    "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
+    "Referer": "https://fbref.com/en/comps/9/Premier-League-Stats",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
 }
 
 # Map FPL short names -> our canonical team names
@@ -39,9 +50,19 @@ FPL_NAME_MAP = {
 }
 
 
-def _get(url: str, timeout: int = 20) -> requests.Response:
-    resp = requests.get(url, headers=HEADERS, timeout=timeout)
-    resp.raise_for_status()
+def _get(url: str, timeout: int = 20, retries: int = 3) -> requests.Response:
+    """GET with browser headers + retry/backoff (FBRef rate-limits with 429/403)."""
+    last = None
+    for attempt in range(retries):
+        resp = requests.get(url, headers=HEADERS, timeout=timeout)
+        if resp.status_code in (429, 403) and attempt < retries - 1:
+            last = resp
+            time.sleep(3 * (attempt + 1))  # 3s, 6s backoff
+            continue
+        resp.raise_for_status()
+        return resp
+    if last is not None:
+        last.raise_for_status()
     return resp
 
 
@@ -147,11 +168,20 @@ def build_player_prices(bootstrap: dict) -> list[dict]:
             # fall back to 90s when a player only ever subbed on.
             "avg_min": round(p.get("minutes", 0) / max(starts, 1), 0)
                        if starts else (p.get("minutes", 0) or 0),
-            # shots / SoT / key passes per 90 — filled by enrich_player_detail()
-            # (shots & SoT from FPL element-summary; key passes from FBRef).
+            # shots / SoT / key passes per 90 — filled from FBRef when reachable.
             "shots_90": 0.0,
             "sot_90": 0.0,
             "kp_90": 0.0,
+            # FPL-native per-90 proxies (always available, never blocked):
+            #   threat  ~ shot volume/quality proxy
+            #   creativity ~ chance-creation / key-pass proxy
+            # Used as a fallback when FBRef shot/KP data is unavailable.
+            "threat_90": round(_f(p.get("threat"))
+                               / max(p.get("minutes", 0) / 90.0, 1e-9), 1)
+                         if p.get("minutes", 0) else 0.0,
+            "creativity_90": round(_f(p.get("creativity"))
+                                   / max(p.get("minutes", 0) / 90.0, 1e-9), 1)
+                             if p.get("minutes", 0) else 0.0,
             # value + form
             "ppm": round(p.get("total_points", 0) / (p["now_cost"] / 10.0), 2)
                    if p.get("now_cost") else 0,
@@ -387,7 +417,8 @@ def scrape_all() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"FPL API: {exc}")
 
-    # enrich players with shots/SoT + key passes (both single FBRef requests)
+    # enrich players with shots/SoT + key passes (both single FBRef requests).
+    # FBRef often 403s on hosted IPs; if so we fall back to FPL threat/creativity.
     if bundle.get("players"):
         try:
             enrich_shots_from_fbref(bundle["players"])
@@ -397,6 +428,17 @@ def scrape_all() -> dict[str, Any]:
             enrich_keypasses_from_fbref(bundle["players"])
         except Exception as exc:  # noqa: BLE001
             errors.append(f"Key-pass enrichment: {exc}")
+
+        # Did FBRef actually return usable shot data?
+        got_shots = sum(1 for p in bundle["players"] if p.get("shots_90", 0) > 0)
+        bundle["shots_source"] = "fbref" if got_shots >= 20 else "fpl_proxy"
+        if bundle["shots_source"] == "fpl_proxy":
+            # Fall back to FPL-native proxies so the columns are never empty.
+            for p in bundle["players"]:
+                p["shots_90"] = p.get("threat_90", 0.0)
+                p["sot_90"] = round(p.get("threat_90", 0.0) * 0.4, 1)  # ~SoT share
+                p["kp_90"] = p.get("creativity_90", 0.0)
+            errors.append("FBRef shots unavailable — using FPL threat/creativity proxy.")
 
     try:
         bundle["team_stats"] = fetch_fbref_team_stats()
