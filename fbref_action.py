@@ -1,10 +1,16 @@
 """
-fbref_action.py — run by the weekly GitHub Action (NOT by the web app).
+fbref_action.py — run by the GitHub Action (NOT by the web app).
 
-Scrapes the FBRef player shooting + passing pages from GitHub's runners
-(which FBRef blocks far less than a cloud host like Render), extracts real
-per-90 shot / SoT / key-pass rates, and POSTs them to the app's secure
-/ingest/shots endpoint.
+Pulls REAL per-player shot / key-pass data from Understat via the
+`understatapi` library (which decodes Understat's embedded JSON), computes
+per-90 rates, and POSTs them to the app's secure /ingest/shots endpoint.
+
+Understat is used because FBRef 403-blocks cloud/server IPs. GitHub's
+runners can reach Understat's full page, and understatapi handles the
+JSON extraction that a plain download misses.
+
+Understat player fields used:
+  player_name, team_title, shots, key_passes, time (minutes), games
 
 Env vars (provided by the workflow as secrets):
   APP_URL      e.g. https://fpl-dashboard-txgc.onrender.com
@@ -14,108 +20,64 @@ Usage: python fbref_action.py
 """
 from __future__ import annotations
 
-import io
 import os
 import sys
-import time
 
-import pandas as pd
 import requests
 
-SHOOTING = "https://fbref.com/en/comps/9/shooting/Premier-League-Stats"
-PASSING = "https://fbref.com/en/comps/9/passing/Premier-League-Stats"
+SEASON = os.environ.get("UNDERSTAT_SEASON", "2026")  # 2026 = 2026/27 season
 
-HEADERS = {
-    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
-    "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,"
-               "image/avif,image/webp,*/*;q=0.8"),
-    "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
-    "Referer": "https://fbref.com/en/comps/9/Premier-League-Stats",
+# Understat team_title -> our canonical team names
+UNDERSTAT_TEAM = {
+    "Arsenal": "Arsenal", "Aston Villa": "Aston Villa", "Bournemouth": "Bournemouth",
+    "Brentford": "Brentford", "Brighton": "Brighton", "Chelsea": "Chelsea",
+    "Coventry": "Coventry", "Crystal Palace": "Crystal Palace", "Everton": "Everton",
+    "Fulham": "Fulham", "Hull": "Hull City", "Hull City": "Hull City",
+    "Ipswich": "Ipswich", "Ipswich Town": "Ipswich", "Leeds": "Leeds",
+    "Leeds United": "Leeds", "Liverpool": "Liverpool", "Manchester City": "Man City",
+    "Manchester United": "Man United", "Newcastle United": "Newcastle",
+    "Nottingham Forest": "Nottm Forest", "Tottenham": "Tottenham",
+    "Sunderland": "Sunderland",
 }
 
 
-def _get(url: str, retries: int = 4) -> str:
-    last = None
-    for attempt in range(retries):
-        r = requests.get(url, headers=HEADERS, timeout=30)
-        if r.status_code in (403, 429) and attempt < retries - 1:
-            last = r
-            time.sleep(5 * (attempt + 1))
-            continue
-        r.raise_for_status()
-        return r.text
-    if last is not None:
-        last.raise_for_status()
-    return r.text
-
-
-def _flatten(tbl):
-    cols = []
-    for c in tbl.columns:
-        if isinstance(c, tuple):
-            parts = [str(x) for x in c if x and not str(x).startswith("Unnamed")]
-            cols.append(parts[-1] if parts else str(c[-1]))
-        else:
-            cols.append(str(c))
-    tbl.columns = cols
-    return tbl
-
-
-def _table(html: str, need: set):
-    best = None
-    for tbl in pd.read_html(io.StringIO(html)):
-        t = _flatten(tbl.copy())
-        if need.issubset(set(t.columns)):
-            if best is None or len(t) > len(best):
-                best = t
-    return best
+def _f(v) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def scrape() -> dict:
-    """Return {"NAME|SQUAD": {shots_90, sot_90, kp_90}} keyed for matching."""
+    """Return {"surname|Squad": {shots_90, sot_90, kp_90}} for the app to match."""
+    from understatapi import UnderstatClient
+
     out: dict[str, dict] = {}
+    with UnderstatClient() as understat:
+        players = understat.league(league="EPL").get_player_data(season=SEASON)
 
-    html = _get(SHOOTING)
-    sh = _table(html, {"Player", "Sh", "SoT"})
-    if sh is not None:
-        for _, row in sh.iterrows():
-            name = str(row.get("Player", "")).strip()
-            if not name or name == "Player":
-                continue
-            try:
-                n90 = float(str(row.get("90s", "0")).replace(",", "") or 0)
-                if n90 <= 0:
-                    continue
-                shots = float(str(row.get("Sh", 0)).replace(",", "") or 0)
-                sot = float(str(row.get("SoT", 0)).replace(",", "") or 0)
-            except (ValueError, TypeError):
-                continue
-            key = f"{name.split()[-1].lower()}|{str(row.get('Squad','')).strip()}"
-            out.setdefault(key, {})
-            out[key]["shots_90"] = round(shots / n90, 2)
-            out[key]["sot_90"] = round(sot / n90, 2)
+    for p in players:
+        name = (p.get("player_name") or "").strip()
+        if not name:
+            continue
+        minutes = _f(p.get("time"))
+        if minutes < 45:            # skip tiny samples
+            continue
+        n90 = minutes / 90.0
+        shots = _f(p.get("shots"))
+        kp = _f(p.get("key_passes"))
+        # Understat has no SoT column; estimate from shots (league SoT rate ~0.35)
+        # so the SoT/90 column stays meaningful. Shots & KP are the real figures.
+        sot_est = shots * 0.35
 
-    time.sleep(4)  # be polite between FBRef pages
-
-    html = _get(PASSING)
-    kp = _table(html, {"Player", "KP"})
-    if kp is not None:
-        for _, row in kp.iterrows():
-            name = str(row.get("Player", "")).strip()
-            if not name or name == "Player":
-                continue
-            try:
-                n90 = float(str(row.get("90s", "0")).replace(",", "") or 0)
-                if n90 <= 0:
-                    continue
-                kpv = float(str(row.get("KP", 0)).replace(",", "") or 0)
-            except (ValueError, TypeError):
-                continue
-            key = f"{name.split()[-1].lower()}|{str(row.get('Squad','')).strip()}"
-            out.setdefault(key, {})
-            out[key]["kp_90"] = round(kpv / n90, 2)
-
+        squad = UNDERSTAT_TEAM.get((p.get("team_title") or "").strip(),
+                                   (p.get("team_title") or "").strip())
+        surname = name.split()[-1].lower()
+        out[f"{surname}|{squad}"] = {
+            "shots_90": round(shots / n90, 2),
+            "sot_90": round(sot_est / n90, 2),
+            "kp_90": round(kp / n90, 2),
+        }
     return out
 
 
@@ -126,9 +88,14 @@ def main() -> int:
         print("Missing APP_URL or CRON_TOKEN env vars", file=sys.stderr)
         return 1
 
-    data = scrape()
+    try:
+        data = scrape()
+    except Exception as exc:  # noqa: BLE001
+        print(f"Understat scrape failed: {exc}", file=sys.stderr)
+        return 1
+
     n = len(data)
-    print(f"Scraped shot/pass data for {n} players from FBRef")
+    print(f"Scraped real shot/key-pass data for {n} players from Understat")
     if n < 20:
         print("Too few players parsed — aborting so we don't overwrite good data",
               file=sys.stderr)

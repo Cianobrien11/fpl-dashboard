@@ -2,9 +2,9 @@ name: Weekly Data Refresh
 
 # Weekly refresh of the FPL dashboard.
 #  1. Trigger the app's own refresh (FPL API stats, fixtures, prices).
-#  2. Scrape FBRef shots/SoT/key-passes from GitHub's runners (FBRef blocks
-#     these far less than a cloud host like Render) and POST the real numbers
-#     to the app's /ingest/shots endpoint.
+#  2. Pull REAL shots/key-passes from Understat (via understatapi) on GitHub's
+#     runners — Understat serves the full data page to GitHub but not to a
+#     cloud host like Render — and POST the numbers to /ingest/shots.
 # Runs twice weekly — Friday & Tuesday 07:00 UTC — plus manual trigger.
 on:
   schedule:
@@ -35,9 +35,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install scraper dependencies
-        run: pip install requests pandas lxml
+        run: pip install requests understatapi
 
-      - name: Scrape FBRef shots and post to the app
+      - name: Pull real shots from Understat and post to the app
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
