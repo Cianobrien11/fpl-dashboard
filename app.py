@@ -229,6 +229,8 @@ def _do_refresh() -> dict:
         snap["fixtures"] = bundle["fixtures"]
     if bundle.get("players"):
         snap["players"] = bundle["players"]
+    if bundle.get("shots_source"):
+        snap["shots_source"] = bundle["shots_source"]
     if bundle.get("current_gw"):
         snap["current_gw"] = bundle["current_gw"]
     if bundle.get("next_gw"):
