@@ -11,14 +11,14 @@
 </div>
 
 <div class="wrap">
-  <h2>Fixture Ease Trends</h2>
-  <p class="hint">How each team's run rises and falls across the window (3 = easy, 2 = medium, 1 = tough). Switch category and toggle teams in the legend.</p>
+  <h2>Fixture Ease</h2>
+  <p class="hint">Each team's fixture run over the window as a single <b>0&ndash;100% ease score</b> &mdash; computed from opponents'
+     xG / xGA per game (weaker opponent = easier), adjusted for home/away. 100% = dream run, 0% = brutal. Hover a bar for the breakdown.</p>
   <div class="tabs" style="margin-bottom:10px">
-    <div class="tabbtn active" data-tr="cs">&#129508; Clean Sheets</div>
-    <div class="tabbtn" data-tr="gs">&#9889; Goals</div>
-    <div class="tabbtn" data-tr="gc">&#129509; Conceding</div>
+    <div class="tabbtn active" data-tr="cs">&#129508; Clean Sheets (vs attack)</div>
+    <div class="tabbtn" data-tr="gs">&#9889; Goals (vs defence)</div>
   </div>
-  <div id="trendChart" style="height:420px"></div>
+  <div id="easeChart" style="height:600px"></div>
 </div>
 
 <div class="wrap">
@@ -102,7 +102,7 @@ mt.onchange=applyMode;
 
 // ---- Charts ----
 const scatter = {{ scatter|safe }};
-const trends = {{ trends|safe }};
+const ease = {{ ease|safe }};
 const AXIS='#8b97ad', GRID='#2c3648', TXT='#e8ecf4';
 
 function diagonal(pts){
@@ -130,30 +130,40 @@ function scatterChart(id, pts, xlabel, ylabel, colorGood){
 scatterChart('attackChart', scatter.attack, 'xG', 'Goals', '#37e6a4');
 scatterChart('defenceChart', scatter.defence, 'xGA', 'Conceded', '#f87171');
 
-let trendChart=null;
-const PALETTE=['#37e6a4','#60a5fa','#fbbf24','#f87171','#a78bfa','#f472b6','#34d399','#fb923c','#22d3ee','#e879f9'];
-function drawTrend(cat){
-  const t=trends[cat];
-  const series=t.series.map((s,i)=>({name:s.team,data:s.data,
-    visible:i<5,color:PALETTE[i%PALETTE.length]}));
-  trendChart=Highcharts.chart('trendChart',{
-    chart:{type:'line',backgroundColor:'transparent',style:{fontFamily:'Segoe UI'}},
+function easeColor(pct){
+  // red (0) -> amber (50) -> green (100)
+  if(pct>=66) return '#37e6a4';
+  if(pct>=50) return '#8fd14f';
+  if(pct>=40) return '#fbbf24';
+  if(pct>=25) return '#fb923c';
+  return '#f87171';
+}
+function drawEase(cat){
+  const rows=ease[cat];                       // already sorted desc by pct
+  const cats=rows.map(r=>r.team);
+  const data=rows.map(r=>({y:r.pct,color:easeColor(r.pct),chips:r.chips}));
+  Highcharts.chart('easeChart',{
+    chart:{type:'bar',backgroundColor:'transparent',style:{fontFamily:'Segoe UI'}},
     title:{text:null},
-    xAxis:{categories:t.gws,labels:{style:{color:AXIS}},lineColor:GRID},
-    yAxis:{min:1,max:3,tickInterval:1,title:{text:'Ease (3=easy)',style:{color:AXIS}},
-      labels:{style:{color:AXIS}},gridLineColor:GRID},
-    legend:{itemStyle:{color:AXIS},itemHoverStyle:{color:TXT}},
-    credits:{enabled:false},
-    tooltip:{backgroundColor:'#1a2130',style:{color:TXT},shared:false},
-    plotOptions:{line:{marker:{enabled:true,radius:3},connectNulls:false}},
-    series:series
+    xAxis:{categories:cats,labels:{style:{color:TXT,fontWeight:'600'}},lineColor:GRID},
+    yAxis:{min:0,max:100,title:{text:'Fixture ease %',style:{color:AXIS}},
+      labels:{format:'{value}%',style:{color:AXIS}},gridLineColor:GRID},
+    legend:{enabled:false},credits:{enabled:false},
+    tooltip:{backgroundColor:'#1a2130',style:{color:TXT},
+      formatter:function(){
+        const c=(this.point.chips||[]).map(x=>x.code+'('+x.venue+') '+x.pct+'%').join('<br>');
+        return '<b>'+this.x+'</b> — '+this.y+'% ease<br>'+c;
+      }},
+    plotOptions:{bar:{borderRadius:3,dataLabels:{enabled:true,format:'{y}%',
+      style:{color:TXT,fontWeight:'700',textOutline:'none'}}}},
+    series:[{name:'Ease %',data:data}]
   });
 }
-drawTrend('cs');
+drawEase('cs');
 document.querySelectorAll('[data-tr]').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('[data-tr]').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');
-  drawTrend(b.dataset.tr);
+  drawEase(b.dataset.tr);
 });
 </script>
 {% endblock %}

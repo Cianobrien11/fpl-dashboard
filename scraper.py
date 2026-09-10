@@ -108,6 +108,7 @@ def build_player_prices(bootstrap: dict) -> list[dict]:
     for p in bootstrap.get("elements", []):
         starts = p.get("starts", 0) or 0
         players.append({
+            "id": p["id"],  # FPL element id — used to fetch detailed per-player stats
             "name": p["web_name"],
             "team": id_to_name.get(p["team"], "?"),
             "position": pos_map.get(p["element_type"], "?"),
@@ -141,6 +142,16 @@ def build_player_prices(bootstrap: dict) -> list[dict]:
             "ppg": _f(p.get("points_per_game")),
             # total bonus already captured below as "bonus"; expose ninetys too
             "ninetys": round(p.get("minutes", 0) / 90.0, 1),
+            # average minutes per appearance (games the player featured in).
+            # FPL doesn't give "appearances" directly, so approximate via starts;
+            # fall back to 90s when a player only ever subbed on.
+            "avg_min": round(p.get("minutes", 0) / max(starts, 1), 0)
+                       if starts else (p.get("minutes", 0) or 0),
+            # shots / SoT / key passes per 90 — filled by enrich_player_detail()
+            # (shots & SoT from FPL element-summary; key passes from FBRef).
+            "shots_90": 0.0,
+            "sot_90": 0.0,
+            "kp_90": 0.0,
             # value + form
             "ppm": round(p.get("total_points", 0) / (p["now_cost"] / 10.0), 2)
                    if p.get("now_cost") else 0,
@@ -219,7 +230,85 @@ def fetch_fbref_team_stats() -> dict[str, dict]:
                     rec["sot"] = int(float(row.get("SoT", rec.get("sot", 0))))
             except (ValueError, TypeError):
                 continue
-    return stats
+
+
+# --------------------------------------------------------------------------
+# Per-player shooting / passing enrichment
+#   shots + SoT  -> FPL element-summary endpoint (per player)
+#   key passes   -> FBRef player passing table (single page)
+# --------------------------------------------------------------------------
+def enrich_shots_from_fpl(players: list[dict], max_players: int = 700,
+                          pause: float = 0.03) -> None:
+    """
+    Add shots_90 / sot_90 to each player from the FPL element-summary endpoint.
+
+    One lightweight call per player. Only players with minutes are fetched
+    (skips the deep bench) to keep the weekly refresh quick. Mutates in place;
+    failures for a single player are swallowed so the whole refresh never dies.
+    """
+    fetched = 0
+    for p in players:
+        if fetched >= max_players:
+            break
+        if p.get("minutes", 0) < 45:  # skip players who've barely featured
+            continue
+        try:
+            data = _get(f"{FPL_BASE}/element-summary/{p['id']}/", timeout=15).json()
+            history = data.get("history", [])
+            shots = sum(h.get("shots", 0) or 0 for h in history)
+            sot = sum(h.get("shots_on_target", 0) or 0 for h in history)
+            n90 = max(p.get("minutes", 0) / 90.0, 1e-9)
+            p["shots_90"] = round(shots / n90, 2)
+            p["sot_90"] = round(sot / n90, 2)
+            fetched += 1
+            if pause:
+                time.sleep(pause)
+        except Exception:  # noqa: BLE001
+            continue
+
+
+def enrich_keypasses_from_fbref(players: list[dict]) -> None:
+    """
+    Add kp_90 (key passes per 90) to each player from FBRef's passing table.
+    Matched on surname + team. Best-effort; mutates in place.
+    """
+    import io
+    import pandas as pd
+
+    url = "https://fbref.com/en/comps/9/passing/Premier-League-Stats"
+    resp = _get(url, timeout=30)
+    html = resp.text.replace("<!--", "").replace("-->", "")
+    tables = pd.read_html(io.StringIO(html))
+    passing = None
+    for tbl in tables:
+        cols = [str(c[-1]) if isinstance(c, tuple) else str(c) for c in tbl.columns]
+        if "Player" in cols and ("KP" in cols):
+            tbl.columns = cols
+            passing = tbl
+            break
+    if passing is None:
+        return
+
+    # build {lastname_lower: kp_per90}
+    kp_by_name: dict[str, float] = {}
+    for _, row in passing.iterrows():
+        name = str(row.get("Player", "")).strip()
+        if not name or name == "Player":
+            continue
+        try:
+            kp = float(row.get("KP", 0) or 0)
+            mins = float(str(row.get("Min", "0")).replace(",", "") or 0)
+        except (ValueError, TypeError):
+            continue
+        if mins <= 0:
+            continue
+        last = name.split()[-1].lower()
+        kp_by_name[last] = round(kp / (mins / 90.0), 2)
+
+    for p in players:
+        last = p["name"].split()[-1].lower()
+        if last in kp_by_name:
+            p["kp_90"] = kp_by_name[last]
 
 
 def scrape_all() -> dict[str, Any]:
@@ -239,6 +328,17 @@ def scrape_all() -> dict[str, Any]:
         bundle["next_gw"] = nxt
     except Exception as exc:  # noqa: BLE001
         errors.append(f"FPL API: {exc}")
+
+    # enrich players with shots/SoT (FPL) and key passes (FBRef)
+    if bundle.get("players"):
+        try:
+            enrich_shots_from_fpl(bundle["players"])
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"Shots enrichment: {exc}")
+        try:
+            enrich_keypasses_from_fbref(bundle["players"])
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"Key-pass enrichment: {exc}")
 
     try:
         bundle["team_stats"] = fetch_fbref_team_stats()

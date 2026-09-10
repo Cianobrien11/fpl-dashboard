@@ -331,7 +331,8 @@ def filter_sort_players(players: list, position: str = "ALL", team: str = "ALL",
         rows.append(p)
     valid = {"points", "price", "form", "xg", "xa", "xgi", "defcon",
              "selected_by", "ppm", "ict", "goals", "assists",
-             "defcon_pg", "xgi_pg", "ppg", "minutes", "bonus"}
+             "defcon_pg", "xgi_pg", "ppg", "minutes", "bonus",
+             "avg_min", "shots_90", "sot_90", "kp_90"}
     key = sort if sort in valid else "points"
     rows.sort(key=lambda r: r.get(key, 0) or 0, reverse=True)
     return rows[:limit]
@@ -518,3 +519,74 @@ def overall_targets(players: list, rankings: dict, fixtures: dict,
         out[pos].sort(key=lambda r: -r["score"])
         out[pos] = out[pos][:per_pos]
     return {"positions": out, "gws": [f"GW{g}" for g in gws]}
+
+
+# ==========================================================================
+# Fixture ease % — a formula-based 0-100 score per team over a GW window
+# ==========================================================================
+
+def fixture_ease_percent(rankings: dict, fixtures: dict, gw_from: int,
+                         gw_to: int) -> dict:
+    """
+    Score how EASY each team's fixtures are over a window, as a 0-100%.
+
+    Formula (per fixture, then averaged over the window):
+
+      For a CLEAN-SHEET / defensive view, ease depends on how weak the
+      opponent's ATTACK is:   raw = opp_xg_per_game
+      For a GOALS / attacking view, ease depends on how weak the opponent's
+      DEFENCE is:             raw = opp_xga_per_game
+
+      We invert and normalise raw against the league's min/max per-game value
+      so 100% = facing the weakest attack/defence in the league, 0% = the
+      strongest. A home game adds a small fixed bonus, away subtracts it.
+
+        ease_fixture = clamp( 100 * (max_raw - raw) / (max_raw - min_raw)
+                              + home_adj , 0, 100 )
+
+      Team % = mean(ease_fixture over the window).
+
+    Returns {cat: [{team, pct, chips:[{code,venue,pct}]}], ...} sorted desc.
+    """
+    gws = list(range(gw_from, gw_to + 1))
+    GP = 3.0  # games played so far (per-game normaliser)
+    HOME_ADJ = 6.0  # +/- percentage points for venue
+
+    # league min/max of per-game xG (attack) and xGA (defence)
+    xgs = [r["xg"] / GP for r in rankings.values()]
+    xgas = [r["xga"] / GP for r in rankings.values()]
+    xg_min, xg_max = min(xgs), max(xgs)
+    xga_min, xga_max = min(xgas), max(xgas)
+
+    def _norm(raw, lo, hi, venue):
+        if hi - lo < 1e-9:
+            base = 50.0
+        else:
+            base = 100.0 * (hi - raw) / (hi - lo)  # weaker opp -> higher %
+        base += HOME_ADJ if venue == "H" else -HOME_ADJ
+        return max(0.0, min(100.0, base))
+
+    out = {}
+    for cat in ("cs", "gs"):
+        rows = []
+        for team in CANONICAL_TEAMS:
+            chips, pcts = [], []
+            for gw in gws:
+                fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
+                if not fx or fx["opponent"] not in rankings:
+                    continue
+                opp = rankings[fx["opponent"]]
+                if cat == "cs":  # ease vs opponent attack
+                    raw = opp["xg"] / GP
+                    pct = _norm(raw, xg_min, xg_max, fx["venue"])
+                else:            # ease vs opponent defence
+                    raw = opp["xga"] / GP
+                    pct = _norm(raw, xga_min, xga_max, fx["venue"])
+                pcts.append(pct)
+                chips.append({"code": CODE.get(fx["opponent"], fx["opponent"][:3]),
+                              "venue": fx["venue"], "pct": round(pct)})
+            avg = round(sum(pcts) / len(pcts)) if pcts else 0
+            rows.append({"team": team, "pct": avg, "chips": chips})
+        rows.sort(key=lambda r: -r["pct"])
+        out[cat] = rows
+    return out

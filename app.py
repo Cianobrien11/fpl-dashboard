@@ -55,11 +55,11 @@ def dashboard():
     tables = analytics.build_target_tables(rankings, snap["fixtures"], gw_from, gw_to)
     gws = list(range(gw_from, gw_to + 1))
     scatter = analytics.scatter_data(rankings)
-    trends = analytics.form_trend_data(rankings, snap["fixtures"], gw_from, gw_to)
+    ease = analytics.fixture_ease_percent(rankings, snap["fixtures"], gw_from, gw_to)
     return render_template("dashboard.html", tables=tables, gws=gws,
                            gw_from=gw_from, gw_to=gw_to,
                            scatter=json.dumps(scatter),
-                           trends=json.dumps(trends),
+                           ease=json.dumps(ease),
                            scraped_at=snap.get("scraped_at", "—"),
                            active="dashboard")
 
