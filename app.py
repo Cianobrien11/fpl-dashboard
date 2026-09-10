@@ -50,7 +50,8 @@ def _ensure_data() -> dict:
 def dashboard():
     snap = _ensure_data()
     gw_from = int(request.args.get("from", snap.get("next_gw") or GW_FROM_DEFAULT))
-    gw_to = int(request.args.get("to", gw_from + 7))
+    # default to the full remaining season (through GW38); cap at 38
+    gw_to = min(int(request.args.get("to", 38)), 38)
     rankings = analytics.compute_rankings(snap["team_stats"])
     tables = analytics.build_target_tables(rankings, snap["fixtures"], gw_from, gw_to)
     gws = list(range(gw_from, gw_to + 1))

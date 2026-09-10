@@ -31,6 +31,12 @@
     <label class="hint" style="margin-left:8px">To GW <input type="number" name="to" value="{{ gw_to }}" min="1" max="38" style="width:60px"></label>
     <button class="btn" style="margin-left:8px;padding:5px 14px" type="submit">Apply</button>
   </form>
+  <div style="margin:-6px 0 12px;display:flex;gap:6px;flex-wrap:wrap">
+    <span class="hint" style="margin:0">Quick view:</span>
+    <a class="hint" style="margin:0;color:var(--primary)" href="?from={{ gw_from }}&to={{ gw_from + 5 }}">Next 6</a>
+    <a class="hint" style="margin:0;color:var(--primary)" href="?from={{ gw_from }}&to={{ gw_from + 11 }}">Next 12</a>
+    <a class="hint" style="margin:0;color:var(--primary)" href="?from={{ gw_from }}&to=38">Full season</a>
+  </div>
 
   <div class="tabs">
     <div class="tabbtn active" data-t="cs">&#129508; Clean Sheets</div>
@@ -47,7 +53,7 @@
   <div class="tabpane {{ 'active' if cat=='cs' }}" id="pane-{{ cat }}">
     <table>
       <thead><tr>
-        <th>#</th><th>Team</th><th>Easy</th><th>{{ label }} Rk</th><th>{{ stat }}</th>
+        <th>#</th><th>Team</th><th>Easy</th><th>Avg FDR</th><th>{{ label }} Rk</th><th>{{ stat }}</th>
         {% for g in gws %}<th style="text-align:center">GW{{ g }}</th>{% endfor %}
         <th>Easy/Med GWs</th>
       </tr></thead>
@@ -58,10 +64,12 @@
           <td class="tn">{{ r.team }}</td>
           <td class="cnt {{ 'cnt-hi' if r.easy_n>=4 else 'cnt-md' if r.easy_n>=2 else 'cnt-lo' }}"
               data-easy="{{ r.easy_n }}" data-em="{{ r.em_n }}">{{ r.em_n }}/{{ gws|length }}</td>
+          <td class="mono" style="text-align:center;font-weight:700;color:{{ 'var(--primary)' if r.avg_fdr<2.6 else 'var(--yellow-tx)' if r.avg_fdr<3.6 else 'var(--red-tx)' }}"
+              title="Average fixture difficulty over the window (1=easiest, 5=hardest)">{{ r.avg_fdr }}</td>
           <td class="mono" style="text-align:center">{{ r.rk }}</td>
           <td class="mono">{{ '%.2f'|format(r.x) }}</td>
           {% for f in r.fixtures %}
-            <td class="gwcol"><span class="fx {{ f.d|dcls }}">{{ f.code }}({{ f.venue }})</span></td>
+            <td class="gwcol"><span class="fx {{ f.d|dcls }}" title="GW{{ f.gw }} {{ 'vs' if f.venue=='H' else 'at' }} {{ f.opp }} — FDR {{ f.fdr }}/5 · {{ f.opp_lbl }} {{ f.opp_stat }} (rank {{ f.opp_rank }}/20)">{{ f.code }}({{ f.venue }})</span></td>
           {% endfor %}
           <td style="font-size:11px;font-weight:600;color:var(--primary)"
               data-easy-gws="{{ r.easy_gws|join(', ') }}"

@@ -115,31 +115,49 @@ def build_target_tables(rankings: dict, fixtures: dict, gw_from: int,
     for team in CANONICAL_TEAMS:
         tr = rankings[team]
         team_fx = [f for f in fixtures.get(team, []) if f["gw"] in gws]
+        gp = 3.0  # games played, for per-game context in tooltips
         per_cat = {}
         for cat in ("cs", "gs", "gc"):
-            fx_list, easy, em = [], [], []
+            fx_list, easy, em, dsum = [], [], [], 0
             for f in team_fx:
                 opp = f["opponent"]
                 if opp not in rankings:
                     continue
-                d = _difficulty(cat, rankings[opp], f["venue"])
-                fx_list.append({"code": CODE.get(opp, opp[:3].upper()),
-                                "venue": f["venue"], "d": d, "gw": f["gw"]})
+                orr = rankings[opp]
+                d = _difficulty(cat, orr, f["venue"])
+                dsum += d
+                # Context for the tooltip: what makes this fixture easy/hard.
+                # CS/GC judged vs opponent ATTACK; GS judged vs opponent DEFENCE.
+                if cat == "gs":
+                    opp_stat, opp_lbl = round(orr["xga"] / gp, 2), "opp xGA/gm"
+                    opp_rank = orr["gc_rk"]
+                else:
+                    opp_stat, opp_lbl = round(orr["xg"] / gp, 2), "opp xG/gm"
+                    opp_rank = orr["gs_rk"]
+                # 1-5 FDR-style rating (1=easiest, 5=hardest) from the 0/1/2 tier
+                fdr = {0: 2, 1: 3, 2: 5}[d]
+                fx_list.append({
+                    "code": CODE.get(opp, opp[:3].upper()), "opp": opp,
+                    "venue": f["venue"], "d": d, "gw": f["gw"], "fdr": fdr,
+                    "opp_stat": opp_stat, "opp_lbl": opp_lbl, "opp_rank": opp_rank,
+                })
                 if d == 0:
                     easy.append(f"GW{f['gw']}")
                 if d <= 1:
                     em.append(f"GW{f['gw']}")
-            per_cat[cat] = (fx_list, easy, em)
+            # average difficulty as a 1-5 score (lower = easier run)
+            avg_fdr = round(sum(x["fdr"] for x in fx_list) / len(fx_list), 1) if fx_list else 0
+            per_cat[cat] = (fx_list, easy, em, avg_fdr)
 
         for cat in ("cs", "gs", "gc"):
-            fx_list, easy, em = per_cat[cat]
+            fx_list, easy, em, avg_fdr = per_cat[cat]
             rk = tr["gc_rk"] if cat == "gc" else tr[f"{cat}_rk"]
             x = tr["xg"] if cat == "gs" else tr["xga"]
             a = tr["gf"] if cat == "gs" else tr["ga"]
             out[cat].append({
                 "team": team, "rk": rk, "x": round(x, 2), "a": a,
                 "easy_n": len(easy), "easy_gws": easy,
-                "em_n": len(em), "em_gws": em,
+                "em_n": len(em), "em_gws": em, "avg_fdr": avg_fdr,
                 "fixtures": fx_list,
             })
 
