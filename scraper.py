@@ -125,6 +125,16 @@ def build_player_prices(bootstrap: dict) -> list[dict]:
         except (TypeError, ValueError):
             return 0.0
 
+    def _per90(total, minutes, ndp=2, min_minutes=60):
+        """Per-90 rate, but only once a player has a meaningful sample.
+
+        Below min_minutes we return 0.0 instead of extrapolating — otherwise a
+        player with ~1 minute gets an absurd per-90 (e.g. threat 17 -> 1530)."""
+        m = minutes or 0
+        if m < min_minutes:
+            return 0.0
+        return round(_f(total) / (m / 90.0), ndp)
+
     players = []
     for p in bootstrap.get("elements", []):
         starts = p.get("starts", 0) or 0
@@ -153,12 +163,10 @@ def build_player_prices(bootstrap: dict) -> list[dict]:
             "defcon": p.get("defensive_contribution", 0) or 0,
             # per-game normalised stats (per 90 minutes played).
             # ninetys = minutes / 90; guard against divide-by-zero.
-            "defcon_pg": round((p.get("defensive_contribution", 0) or 0)
-                               / max(p.get("minutes", 0) / 90.0, 1e-9), 2)
-                         if p.get("minutes", 0) else 0.0,
-            "xgi_pg": round(_f(p.get("expected_goal_involvements"))
-                            / max(p.get("minutes", 0) / 90.0, 1e-9), 2)
-                      if p.get("minutes", 0) else 0.0,
+            "defcon_pg": _per90(p.get("defensive_contribution", 0) or 0,
+                                p.get("minutes", 0), 2),
+            "xgi_pg": _per90(p.get("expected_goal_involvements"),
+                             p.get("minutes", 0), 2),
             # points per game the player actually appeared in
             "ppg": _f(p.get("points_per_game")),
             # total bonus already captured below as "bonus"; expose ninetys too
@@ -176,12 +184,8 @@ def build_player_prices(bootstrap: dict) -> list[dict]:
             #   threat  ~ shot volume/quality proxy
             #   creativity ~ chance-creation / key-pass proxy
             # Used as a fallback when FBRef shot/KP data is unavailable.
-            "threat_90": round(_f(p.get("threat"))
-                               / max(p.get("minutes", 0) / 90.0, 1e-9), 1)
-                         if p.get("minutes", 0) else 0.0,
-            "creativity_90": round(_f(p.get("creativity"))
-                                   / max(p.get("minutes", 0) / 90.0, 1e-9), 1)
-                             if p.get("minutes", 0) else 0.0,
+            "threat_90": _per90(p.get("threat"), p.get("minutes", 0), 1),
+            "creativity_90": _per90(p.get("creativity"), p.get("minutes", 0), 1),
             # value + form
             "ppm": round(p.get("total_points", 0) / (p["now_cost"] / 10.0), 2)
                    if p.get("now_cost") else 0,
