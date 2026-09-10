@@ -237,34 +237,68 @@ def fetch_fbref_team_stats() -> dict[str, dict]:
 #   shots + SoT  -> FPL element-summary endpoint (per player)
 #   key passes   -> FBRef player passing table (single page)
 # --------------------------------------------------------------------------
-def enrich_shots_from_fpl(players: list[dict], max_players: int = 700,
-                          pause: float = 0.03) -> None:
-    """
-    Add shots_90 / sot_90 to each player from the FPL element-summary endpoint.
+def _fbref_player_table(url: str, need_cols: set):
+    """Fetch a FBRef player table and return the first DataFrame with need_cols."""
+    import io
+    import pandas as pd
+    resp = _get(url, timeout=30)
+    html = resp.text.replace("<!--", "").replace("-->", "")
+    for tbl in pd.read_html(io.StringIO(html)):
+        cols = [str(c[-1]) if isinstance(c, tuple) else str(c) for c in tbl.columns]
+        if need_cols.issubset(set(cols)):
+            tbl.columns = cols
+            return tbl
+    return None
 
-    One lightweight call per player. Only players with minutes are fetched
-    (skips the deep bench) to keep the weekly refresh quick. Mutates in place;
-    failures for a single player are swallowed so the whole refresh never dies.
-    """
-    fetched = 0
+
+def _match_players_by_surname(players: list[dict], value_by_surname: dict, field: str) -> None:
+    """Assign value_by_surname[surname] to player[field], matched on last name."""
     for p in players:
-        if fetched >= max_players:
-            break
-        if p.get("minutes", 0) < 45:  # skip players who've barely featured
+        parts = p["name"].split()
+        if not parts:
+            continue
+        last = parts[-1].lower()
+        if last in value_by_surname:
+            p[field] = value_by_surname[last]
+
+
+def enrich_shots_from_fbref(players: list[dict]) -> None:
+    """
+    Add shots_90 / sot_90 from FBRef's player shooting page in a SINGLE request.
+
+    Far faster and more reliable than one FPL element-summary call per player
+    (which timed out on constrained hosts). FBRef exposes Sh/90 and SoT/90
+    directly; we fall back to computing them from Sh/SoT and 90s if needed.
+    Matched on surname. Best-effort; mutates in place.
+    """
+    tbl = _fbref_player_table(
+        "https://fbref.com/en/comps/9/shooting/Premier-League-Stats",
+        {"Player", "Sh"})
+    if tbl is None:
+        return
+    sh_by, sot_by = {}, {}
+    for _, row in tbl.iterrows():
+        name = str(row.get("Player", "")).strip()
+        if not name or name == "Player":
             continue
         try:
-            data = _get(f"{FPL_BASE}/element-summary/{p['id']}/", timeout=15).json()
-            history = data.get("history", [])
-            shots = sum(h.get("shots", 0) or 0 for h in history)
-            sot = sum(h.get("shots_on_target", 0) or 0 for h in history)
-            n90 = max(p.get("minutes", 0) / 90.0, 1e-9)
-            p["shots_90"] = round(shots / n90, 2)
-            p["sot_90"] = round(sot / n90, 2)
-            fetched += 1
-            if pause:
-                time.sleep(pause)
-        except Exception:  # noqa: BLE001
+            nineties = float(str(row.get("90s", "0")).replace(",", "") or 0)
+            # prefer FBRef's own per-90 columns; else compute from totals
+            sh90 = row.get("Sh/90")
+            sot90 = row.get("SoT/90")
+            if sh90 is None or str(sh90) == "nan":
+                sh = float(row.get("Sh", 0) or 0)
+                sh90 = (sh / nineties) if nineties else 0
+            if sot90 is None or str(sot90) == "nan":
+                sot = float(row.get("SoT", 0) or 0)
+                sot90 = (sot / nineties) if nineties else 0
+            last = name.split()[-1].lower()
+            sh_by[last] = round(float(sh90), 2)
+            sot_by[last] = round(float(sot90), 2)
+        except (ValueError, TypeError):
             continue
+    _match_players_by_surname(players, sh_by, "shots_90")
+    _match_players_by_surname(players, sot_by, "sot_90")
 
 
 def enrich_keypasses_from_fbref(players: list[dict]) -> None:
@@ -329,10 +363,10 @@ def scrape_all() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"FPL API: {exc}")
 
-    # enrich players with shots/SoT (FPL) and key passes (FBRef)
+    # enrich players with shots/SoT + key passes (both single FBRef requests)
     if bundle.get("players"):
         try:
-            enrich_shots_from_fpl(bundle["players"])
+            enrich_shots_from_fbref(bundle["players"])
         except Exception as exc:  # noqa: BLE001
             errors.append(f"Shots enrichment: {exc}")
         try:
