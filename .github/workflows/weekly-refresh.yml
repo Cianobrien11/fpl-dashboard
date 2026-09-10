@@ -1,26 +1,44 @@
 name: Weekly Data Refresh
 
-# Auto-refresh the FPL dashboard's stats & fixtures once a week.
-# Runs Friday 07:00 UTC (ahead of the typical Saturday deadline) and can
-# also be triggered manually from the Actions tab.
+# Weekly refresh of the FPL dashboard.
+#  1. Trigger the app's own refresh (FPL API stats, fixtures, prices).
+#  2. Scrape FBRef shots/SoT/key-passes from GitHub's runners (FBRef blocks
+#     these far less than a cloud host like Render) and POST the real numbers
+#     to the app's /ingest/shots endpoint.
+# Runs twice weekly — Friday & Tuesday 07:00 UTC — plus manual trigger.
 on:
   schedule:
-    - cron: "0 7 * * 5"   # 07:00 UTC every Friday
+    - cron: "0 7 * * 5"   # 07:00 UTC every Friday (before the weekend deadline)
+    - cron: "0 7 * * 2"   # 07:00 UTC every Tuesday (catch midweek fixtures/prices)
   workflow_dispatch: {}    # manual "Run workflow" button
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger the dashboard refresh endpoint
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Trigger the app refresh (FPL stats + fixtures)
         env:
-          APP_URL: ${{ secrets.APP_URL }}       # e.g. https://fpl-dashboard.onrender.com
-          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}  # same value set in Render
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
         run: |
-          echo "Calling refresh endpoint..."
-          # --fail-with-body: non-2xx exits non-zero but still prints the body.
-          # --max-time 120: Render free tier can take ~30s to wake from sleep.
-          curl --fail-with-body --max-time 120 \
-               "$APP_URL/cron/refresh?token=$CRON_TOKEN"
+          echo "Calling app refresh endpoint..."
+          curl --fail-with-body --max-time 180 \
+               "$APP_URL/cron/refresh?token=[REDACTED_PARAM]
           echo ""
-          echo "Refresh request completed."
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install scraper dependencies
+        run: pip install requests pandas lxml
+
+      - name: Scrape FBRef shots and post to the app
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: python fbref_action.py

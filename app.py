@@ -170,10 +170,20 @@ def players_page():
     search = request.args.get("q", "").strip()
     rows = analytics.filter_sort_players(pl, position, team, sort, search)
     teams = sorted({p["team"] for p in pl}) if pl else []
+    # Determine the shots source robustly. Prefer the stored flag, but also
+    # auto-detect: real shots/90 are never above ~12, so if any player shows a
+    # much larger value the data is the FPL Threat/Creativity proxy. This makes
+    # the labels correct even if an older snapshot never stored the flag.
+    shots_source = snap.get("shots_source")
+    if shots_source not in ("fbref", "fpl_proxy"):
+        shots_source = "fbref"
+    max_sh = max((p.get("shots_90", 0) or 0) for p in pl) if pl else 0
+    if max_sh > 12:  # implausible as real shots/90 → it's the proxy
+        shots_source = "fpl_proxy"
     return render_template("players.html", rows=rows, teams=teams,
                            position=position, team=team, sort=sort, search=search,
                            has_data=bool(pl),
-                           shots_source=snap.get("shots_source", "fbref"),
+                           shots_source=shots_source,
                            scraped_at=snap.get("scraped_at", "—"),
                            active="players")
 
@@ -266,6 +276,63 @@ def cron_refresh():
         "errors": bundle.get("errors", []),
     })
 
+
+@app.route("/ingest/shots", methods=["POST"])
+def ingest_shots():
+    """
+    Receive real FBRef shot/SoT/key-pass data from the weekly GitHub Action.
+
+    The Action scrapes FBRef from GitHub's runners (which FBRef blocks far
+    less than a cloud host) and POSTs a JSON body:
+        {"players": {"surname|Squad": {"shots_90":..,"sot_90":..,"kp_90":..}}}
+    We match those onto our stored players by (surname, squad) with a
+    surname-only fallback, then mark shots_source = 'fbref'.
+    """
+    expected = os.environ.get("CRON_TOKEN", "")
+    if not expected or request.args.get("token") != expected:
+        abort(403)
+    payload = request.get_json(silent=True) or {}
+    incoming = payload.get("players") or {}
+    if not incoming:
+        return jsonify({"status": "error", "reason": "no players in payload"}), 400
+
+    snap = _ensure_data()
+    players = snap.get("players") or []
+    if not players:
+        return jsonify({"status": "error", "reason": "no player snapshot yet"}), 400
+
+    # index incoming by surname (with squad) and surname-only fallback
+    by_full, by_surname = {}, {}
+    for key, vals in incoming.items():
+        parts = key.split("|")
+        surname = parts[0].strip().lower()
+        squad = parts[1].strip() if len(parts) > 1 else ""
+        by_full[(surname, squad)] = vals
+        by_surname.setdefault(surname, vals)
+
+    matched = 0
+    for p in players:
+        nm = p.get("name", "").split()
+        if not nm:
+            continue
+        # FPL web_names can be like "B.Fernandes" or "J.Timber" — strip a
+        # leading initial ("X.") so the surname matches FBRef.
+        raw_last = nm[-1]
+        if "." in raw_last:
+            raw_last = raw_last.split(".")[-1]
+        surname = raw_last.lower()
+        vals = by_full.get((surname, p.get("team", ""))) or by_surname.get(surname)
+        if not vals:
+            continue
+        for f in ("shots_90", "sot_90", "kp_90"):
+            if f in vals:
+                p[f] = vals[f]
+        matched += 1
+
+    snap["players"] = players
+    snap["shots_source"] = "fbref"  # real data now present
+    models.save_snapshot(snap)
+    return jsonify({"status": "ok", "matched": matched, "received": len(incoming)})
 
 @app.template_filter("dcls")
 def difficulty_class(d: int) -> str:
