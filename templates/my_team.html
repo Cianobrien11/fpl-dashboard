@@ -55,6 +55,31 @@
   {% endif %}
 </div>
 
+{% if squad and ticker %}
+<div class="wrap">
+  <h2>&#128197; Your Fixture Ticker</h2>
+  <p class="hint">Your 15's upcoming fixtures — &#128994; easy &middot; &#128993; medium &middot; &#128308; tough (by position: attackers vs defence, defenders vs attack).
+     "Tough" counts flag who hits a rough patch.</p>
+  <div style="overflow-x:auto">
+  <table style="white-space:nowrap">
+    <thead><tr><th>Player</th><th>Pos</th>{% for g in ticker.gws %}<th style="text-align:center">{{ g }}</th>{% endfor %}<th>Tough</th></tr></thead>
+    <tbody>
+    {% for r in ticker.rows %}
+      <tr>
+        <td class="tn">{{ r.name }}</td><td>{{ r.position }}</td>
+        {% for c in r.cells %}
+          <td class="gwcol"><span class="fx {{ c.d|dcls }}">{{ c.txt }}</span></td>
+        {% endfor %}
+        <td class="cnt {{ 'cnt-lo' if r.tough==0 else 'cnt-md' if r.tough<=1 else 'cnt-hi' }}"
+            style="{{ 'color:var(--red-tx)' if r.tough>=2 }}">{{ r.tough }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
 {% if squad %}
 <div class="wrap">
   <h2>Captain Picks for GW{{ gw }}</h2>

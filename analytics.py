@@ -37,7 +37,8 @@ def _games_played(stats: dict) -> int:
     return max(stats.get("mp", 3) or 3, 1)
 
 
-def compute_rankings(team_stats: dict[str, dict]) -> dict[str, dict]:
+def compute_rankings(team_stats: dict[str, dict],
+                     strength: dict | None = None) -> dict[str, dict]:
     """
     Return {team: {cs_rk, gs_rk, gc_rk, xg, xga, gf, ga, ...}}.
 
@@ -48,8 +49,12 @@ def compute_rankings(team_stats: dict[str, dict]) -> dict[str, dict]:
     rows = []
     for team in CANONICAL_TEAMS:
         s = team_stats.get(team, {})
+        st = (strength or {}).get(team, {})
         rows.append({
             "team": team,
+            "ov_home": st.get("ov_home"),
+            "ov_away": st.get("ov_away"),
+            "form": st.get("form", 0),
             "xg": float(s.get("xg", 0) or 0),
             "xga": float(s.get("xga", 0) or 0),
             "gf": int(s.get("gf", 0) or 0),
@@ -77,28 +82,38 @@ def compute_rankings(team_stats: dict[str, dict]) -> dict[str, dict]:
 
 
 def _difficulty(cat: str, opp_ranks: dict, venue: str) -> int:
-    """Return 0 (easy), 1 (medium), 2 (hard) for a fixture in a category."""
+    """
+    Return 0 (easy), 1 (medium), 2 (hard) for a fixture in a category.
+
+    Base tier comes from the opponent's season xG/xGA rank. When FPL team
+    strength data is available it is blended in as a FORM signal: a nudge that
+    can shift a borderline fixture one tier easier/harder based on the
+    opponent's *current* strength (FPL updates these ratings on recent form).
+    """
     if cat == "cs":  # want weak-attacking opponent → high gs_rk
         v = opp_ranks["gs_rk"]
-        if v >= 15 or (v >= 12 and venue == "H"):
-            return 0
-        if v <= 5 or (v <= 8 and venue == "A"):
-            return 2
-        return 1
-    if cat == "gs":  # want leaky opponent → low gc_rk
+        base = 0 if (v >= 15 or (v >= 12 and venue == "H")) else \
+               (2 if (v <= 5 or (v <= 8 and venue == "A")) else 1)
+    elif cat == "gs":  # want leaky opponent → low gc_rk
         v = opp_ranks["gc_rk"]
-        if v <= 6 or (v <= 9 and venue == "H"):
-            return 0
-        if v >= 15 or (v >= 12 and venue == "A"):
-            return 2
-        return 1
-    # cat == "gc": this team likely to concede vs strong attacker → low gs_rk
-    v = opp_ranks["gs_rk"]
-    if v <= 5 or (v <= 8 and venue == "A"):
-        return 0
-    if v >= 15 or (v >= 12 and venue == "H"):
-        return 2
-    return 1
+        base = 0 if (v <= 6 or (v <= 9 and venue == "H")) else \
+               (2 if (v >= 15 or (v >= 12 and venue == "A")) else 1)
+    else:  # cat == "gc": likely to concede vs strong attacker → low gs_rk
+        v = opp_ranks["gs_rk"]
+        base = 0 if (v <= 5 or (v <= 8 and venue == "A")) else \
+               (2 if (v >= 15 or (v >= 12 and venue == "H")) else 1)
+
+    # Form blend: opponent's current overall strength (FPL updates on form).
+    # opp_ranks may carry "ov_home"/"ov_away" (1-5). The opponent plays the
+    # OPPOSITE venue to us. Only nudge borderline (tier 1) fixtures.
+    oh, oa = opp_ranks.get("ov_home"), opp_ranks.get("ov_away")
+    if base == 1 and oh is not None and oa is not None:
+        opp_str = oa if venue == "H" else oh
+        if opp_str <= 2:
+            base = 0
+        elif opp_str >= 5:
+            base = 2
+    return base
 
 
 def build_target_tables(rankings: dict, fixtures: dict, gw_from: int,
@@ -608,3 +623,250 @@ def fixture_ease_percent(rankings: dict, fixtures: dict, gw_from: int,
         rows.sort(key=lambda r: -r["pct"])
         out[cat] = rows
     return out
+
+
+# ==========================================================================
+# Phase 2 — player projections: expected points, price moves, set-piece boost
+# ==========================================================================
+
+# FPL points for a goal / clean sheet by position
+_GOAL_PTS = {"GK": 6, "DEF": 6, "MID": 5, "FWD": 4}
+_CS_PTS = {"GK": 4, "DEF": 4, "MID": 1, "FWD": 0}
+
+
+def _fixture_ease_for(player_pos: str, opp_ranks: dict, venue: str) -> float:
+    """Return a 0..1 fixture-ease multiplier for a player based on position.
+
+    Attackers judged on goals-fixture, defenders/keepers on clean-sheet fixture.
+    easy (tier 0) -> 1.15, medium -> 1.0, hard -> 0.82."""
+    cat = "gs" if player_pos in ("MID", "FWD") else "cs"
+    d = _difficulty(cat, opp_ranks, venue)
+    return {0: 1.15, 1: 1.0, 2: 0.82}[d]
+
+
+def expected_points(players: list, rankings: dict, fixtures: dict,
+                    gw: int) -> list:
+    """
+    Project each player's points for a single gameweek (xPts).
+
+    Transparent model combining:
+      * appearance points (minutes security via avg_min / starts)
+      * attacking returns: xGI/90 -> goals+assists, scaled by fixture ease
+      * defensive returns: clean-sheet chance (from fixture) + DefCon points
+      * set-piece bonus: penalty takers get an attacking uplift
+    Not a black box — weights live here and are easy to tune.
+    """
+    out = []
+    for p in players:
+        team = p.get("team")
+        fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
+        if not fx or team not in rankings or fx["opponent"] not in rankings:
+            continue
+        pos = p.get("position", "MID")
+        mins = p.get("minutes", 0)
+        avg_min = p.get("avg_min", 0) or 0
+        # minutes security 0..1 (needs ~60+ avg mins to be "nailed")
+        secure = max(0.0, min(1.0, avg_min / 80.0))
+        if mins < 45:
+            secure *= 0.4
+        appearance = 2.0 * secure
+
+        ease = _fixture_ease_for(pos, rankings[fx["opponent"]], fx["venue"])
+
+        # attacking: xGI per 90 -> expected goal involvements this match
+        xgi90 = p.get("xgi_pg", 0) or 0
+        goal_share = 0.6  # of involvements that are goals vs assists (rough)
+        exp_goals = xgi90 * goal_share * ease * secure
+        exp_assists = xgi90 * (1 - goal_share) * ease * secure
+        att_pts = exp_goals * _GOAL_PTS.get(pos, 4) + exp_assists * 3
+
+        # set-piece boost: primary penalty taker adds expected pen value
+        if p.get("pen_order") == 1:
+            att_pts += 0.6 * ease
+        elif p.get("ck_order") == 1 or p.get("fk_order") == 1:
+            att_pts += 0.2 * ease
+
+        # defensive: clean-sheet probability from fixture ease (CS-oriented)
+        cs_ease = _fixture_ease_for("DEF", rankings[fx["opponent"]], fx["venue"])
+        cs_prob = {1.15: 0.45, 1.0: 0.30, 0.82: 0.15}.get(round(cs_ease, 2), 0.30)
+        def_pts = cs_prob * _CS_PTS.get(pos, 0) * secure
+        # defensive contribution points (2 pts if hitting the DefCon threshold)
+        if p.get("defcon_pg", 0) >= 10 and pos in ("DEF", "MID"):
+            def_pts += 2.0 * secure
+
+        xpts = round(appearance + att_pts + def_pts, 1)
+        out.append({
+            "name": p["name"], "team": team, "position": pos,
+            "price": p.get("price", 0), "opp": CODE.get(fx["opponent"], fx["opponent"][:3]),
+            "venue": fx["venue"], "xpts": xpts,
+            "form": p.get("form", 0), "selected_by": p.get("selected_by", 0),
+        })
+    out.sort(key=lambda x: -x["xpts"])
+    return out
+
+
+def price_predictions(players: list) -> dict:
+    """
+    Predict imminent price changes from this-gameweek transfer momentum.
+
+    FPL price rises/falls are driven by net transfers relative to ownership.
+    We approximate net transfer momentum and flag likely risers/fallers
+    tonight. Uses transfers_in_event / transfers_out_event already scraped.
+
+    Returns {'rising': [...], 'falling': [...]} sorted by momentum.
+    """
+    scored = []
+    for p in players:
+        tin = p.get("transfers_in_event", 0) or 0
+        tout = p.get("transfers_out_event", 0) or 0
+        net = tin - tout
+        scored.append({
+            "name": p["name"], "team": p.get("team"), "position": p.get("position"),
+            "price": p.get("price", 0), "net": net,
+            "in": tin, "out": tout,
+            "selected_by": p.get("selected_by", 0),
+        })
+    rising = sorted((s for s in scored if s["net"] > 0), key=lambda s: -s["net"])[:15]
+    falling = sorted((s for s in scored if s["net"] < 0), key=lambda s: s["net"])[:15]
+    return {"rising": rising, "falling": falling}
+
+
+# ==========================================================================
+# Phase 3 — Captaincy, Differentials, Team radar, My-Team fixture ticker
+# ==========================================================================
+
+def captaincy_board(players: list, rankings: dict, fixtures: dict, gw: int,
+                    limit: int = 20) -> list:
+    """Best captain picks across ALL players for a gameweek, by xPts."""
+    ranked = expected_points(players, rankings, fixtures, gw)
+    # captains are almost always MID/FWD — surface those first but keep all
+    ranked.sort(key=lambda r: (-(r["xpts"] * (1.1 if r["position"] in ("MID", "FWD") else 1.0))))
+    return ranked[:limit]
+
+
+def differentials(players: list, rankings: dict, fixtures: dict, gw: int,
+                  max_own: float = 10.0, limit: int = 20) -> list:
+    """
+    Under-owned players (<= max_own %) in good form with a decent fixture.
+    Ranked by xPts so you get low-owned, high-ceiling picks for mini-leagues.
+    """
+    xp = {(r["name"], r["team"]): r for r in expected_points(players, rankings, fixtures, gw)}
+    out = []
+    for p in players:
+        if (p.get("selected_by", 0) or 0) > max_own:
+            continue
+        if (p.get("minutes", 0) or 0) < 90:
+            continue
+        r = xp.get((p["name"], p["team"]))
+        if not r:
+            continue
+        out.append({**r, "form": p.get("form", 0), "points": p.get("points", 0)})
+    out.sort(key=lambda r: -r["xpts"])
+    return out[:limit]
+
+
+def team_radar(rankings: dict, strength: dict | None = None) -> list:
+    """
+    Per-team 0-100 scores on Attack / Defence / Form / Set-pieces for a radar
+    or bar visual. Attack from xG rank, Defence from xGA rank, Form from FPL
+    strength+form, Set-pieces left as a placeholder the app can fill from
+    player set-piece ownership if desired.
+    """
+    n = len(CANONICAL_TEAMS)
+    out = []
+    for team in CANONICAL_TEAMS:
+        r = rankings.get(team, {})
+        # gs_rk 1 = best attack -> invert to 0-100
+        attack = round(100 * (n - r.get("gs_rk", n)) / (n - 1), 0)
+        defence = round(100 * (n - r.get("cs_rk", n)) / (n - 1), 0)
+        st = (strength or {}).get(team, {})
+        form = st.get("form", 0)
+        # FPL form is points over recent games; scale ~0-15 -> 0-100
+        form_score = round(min(100, (form / 12.0) * 100), 0) if form else None
+        out.append({
+            "team": team, "attack": attack, "defence": defence,
+            "form": form_score,
+            "xg": r.get("xg", 0), "xga": r.get("xga", 0),
+        })
+    out.sort(key=lambda x: -(x["attack"] + x["defence"]))
+    return out
+
+
+def my_team_ticker(squad: list, rankings: dict, fixtures: dict,
+                   gw_from: int, gw_to: int) -> dict:
+    """
+    Fixture-ease ticker for the user's 15. For each player, a per-GW ease
+    (green/amber/red) using the position-appropriate category, plus a count
+    of tough fixtures so you can spot who hits a rough patch and when.
+    """
+    gws = list(range(gw_from, gw_to + 1))
+    rows = []
+    for p in squad:
+        team = p.get("team")
+        pos = p.get("position", "MID")
+        cat = "gs" if pos in ("MID", "FWD") else "cs"
+        cells, tough = [], 0
+        for gw in gws:
+            fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
+            if not fx or fx["opponent"] not in rankings:
+                cells.append({"txt": "-", "d": 1})
+                continue
+            d = _difficulty(cat, rankings[fx["opponent"]], fx["venue"])
+            if d == 2:
+                tough += 1
+            cells.append({"txt": f"{CODE.get(fx['opponent'], fx['opponent'][:3])}({fx['venue']})", "d": d})
+        rows.append({"name": p["name"], "team": team, "position": pos,
+                     "cells": cells, "tough": tough})
+    # order by position then most-tough first
+    order = {"GK": 0, "DEF": 1, "MID": 2, "FWD": 3}
+    rows.sort(key=lambda r: (order.get(r["position"], 4), -r["tough"]))
+    return {"gws": [f"GW{g}" for g in gws], "rows": rows}
+
+
+# ==========================================================================
+# Phase 4 — prediction accuracy tracker
+# ==========================================================================
+
+def score_predictions(logs: list, results: dict) -> dict:
+    """
+    Score logged scoreline predictions against actual finished results.
+
+    logs: [{gw, logged_at, preds:[{home,away,home_score,away_score,verdict}]}]
+    results: {str(gw): [{home,away,hs,as}]}
+
+    Returns per-GW and overall accuracy on:
+      * outcome  (home win / draw / away win) — the headline metric
+      * exact    (exact scoreline)
+    """
+    per_gw, tot_o, tot_e, tot_n = [], 0, 0, 0
+    for entry in logs:
+        gw = entry["gw"]
+        actual = {(r["home"], r["away"]): r for r in results.get(str(gw), [])}
+        if not actual:
+            continue
+        o = e = n = 0
+        for p in entry.get("preds", []):
+            key = (p["home"], p["away"])
+            a = actual.get(key)
+            if not a or a.get("hs") is None or a.get("as") is None:
+                continue
+            n += 1
+            # predicted & actual outcome
+            def _out(hs, as_):
+                return "H" if hs > as_ else ("A" if as_ > hs else "D")
+            pred_o = _out(p["home_score"], p["away_score"])
+            act_o = _out(a["hs"], a["as"])
+            if pred_o == act_o:
+                o += 1
+            if p["home_score"] == a["hs"] and p["away_score"] == a["as"]:
+                e += 1
+        if n:
+            per_gw.append({"gw": gw, "n": n, "outcome": o, "exact": e,
+                           "outcome_pct": round(100 * o / n), "exact_pct": round(100 * e / n)})
+            tot_o += o; tot_e += e; tot_n += n
+    overall = {
+        "n": tot_n,
+        "outcome_pct": round(100 * tot_o / tot_n) if tot_n else 0,
+        "exact_pct": round(100 * tot_e / tot_n) if tot_n else 0,
+    }
+    return {"per_gw": per_gw, "overall": overall}

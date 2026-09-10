@@ -51,9 +51,12 @@ _PH = "%s" if USE_PG else "?"
 
 
 def init_db() -> None:
+    pk = "SERIAL PRIMARY KEY" if USE_PG else "INTEGER PRIMARY KEY AUTOINCREMENT"
     ddl = [
         "CREATE TABLE IF NOT EXISTS snapshot (id INTEGER PRIMARY KEY, data TEXT)",
         "CREATE TABLE IF NOT EXISTS squad (id INTEGER PRIMARY KEY, data TEXT)",
+        f"CREATE TABLE IF NOT EXISTS predictions_log (id {pk}, gw INTEGER, "
+        "logged_at TEXT, data TEXT)",
     ]
     if USE_PG:
         conn = _pg_conn()
@@ -128,3 +131,52 @@ def load_squad() -> list[dict]:
     init_db()
     raw = _fetch("squad")
     return json.loads(raw) if raw else []
+
+
+def log_predictions(gw: int, preds: list) -> None:
+    """Append a gameweek's scoreline predictions for later accuracy scoring.
+
+    Idempotent per (gw): if a row for this gw already exists we skip, so
+    repeated refreshes in the same gameweek don't create duplicates.
+    """
+    import datetime as _dt
+    init_db()
+    ph = _PH
+    if USE_PG:
+        conn = _pg_conn()
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute(f"SELECT 1 FROM predictions_log WHERE gw = {ph}", (gw,))
+                if cur.fetchone():
+                    return
+                cur.execute(
+                    f"INSERT INTO predictions_log (gw, logged_at, data) VALUES ({ph},{ph},{ph})",
+                    (gw, _dt.datetime.utcnow().isoformat(), json.dumps(preds)))
+        finally:
+            conn.close()
+    else:
+        with _sqlite_conn() as c:
+            if c.execute("SELECT 1 FROM predictions_log WHERE gw = ?", (gw,)).fetchone():
+                return
+            c.execute("INSERT INTO predictions_log (gw, logged_at, data) VALUES (?,?,?)",
+                      (gw, _dt.datetime.utcnow().isoformat(), json.dumps(preds)))
+
+
+def load_prediction_logs() -> list:
+    """Return [{gw, logged_at, preds}] for all logged gameweeks, oldest first."""
+    init_db()
+    rows = []
+    if USE_PG:
+        conn = _pg_conn()
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute("SELECT gw, logged_at, data FROM predictions_log ORDER BY gw")
+                for gw, logged_at, data in cur.fetchall():
+                    rows.append({"gw": gw, "logged_at": logged_at, "preds": json.loads(data)})
+        finally:
+            conn.close()
+    else:
+        with _sqlite_conn() as c:
+            for r in c.execute("SELECT gw, logged_at, data FROM predictions_log ORDER BY gw").fetchall():
+                rows.append({"gw": r["gw"], "logged_at": r["logged_at"], "preds": json.loads(r["data"])})
+    return rows

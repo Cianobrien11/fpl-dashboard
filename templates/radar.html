@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Team Radar — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>Team Strength</h2>
+  <p class="hint">Each team's <b>Attack</b> (from xG rank) and <b>Defence</b> (from xGA rank) on a 0-100 scale, plus current
+     <b>Form</b> where available. Sort the eye to who's strong at each end of the pitch.</p>
+  {% if not has_data %}
+    <div class="err">No team data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% else %}
+  <div id="radarChart" style="height:640px"></div>
+  {% endif %}
+</div>
+
+{% if has_data %}
+<script>
+const rows = {{ rows|safe }};
+const AXIS='#8b97ad', GRID='#2c3648', TXT='#e8ecf4';
+const cats = rows.map(r => r.team);
+Highcharts.chart('radarChart', {
+  chart:{type:'bar',backgroundColor:'transparent',style:{fontFamily:'Segoe UI'}},
+  title:{text:null},
+  xAxis:{categories:cats,labels:{style:{color:TXT,fontWeight:'600'}},lineColor:GRID},
+  yAxis:{min:0,max:100,title:{text:'Score (0-100)',style:{color:AXIS}},labels:{style:{color:AXIS}},gridLineColor:GRID},
+  legend:{itemStyle:{color:AXIS},itemHoverStyle:{color:TXT}},
+  credits:{enabled:false},
+  tooltip:{backgroundColor:'#1a2130',style:{color:TXT},shared:true},
+  plotOptions:{bar:{borderRadius:2,groupPadding:0.08,pointPadding:0.02}},
+  series:[
+    {name:'Attack', color:'#37e6a4', data:rows.map(r=>r.attack)},
+    {name:'Defence', color:'#60a5fa', data:rows.map(r=>r.defence)}
+  ]
+});
+</script>
+{% endif %}
+{% endblock %}

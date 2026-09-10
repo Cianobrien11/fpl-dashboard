@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Differentials — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>Differentials Finder &mdash; GW{{ gw }}</h2>
+  <p class="hint">Under-owned players (&le; {{ max_own }}% ownership) in good form with a decent fixture, ranked by projected points.
+     Great for gaining ground in mini-leagues with picks your rivals don't have.</p>
+  {% if not has_data %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% else %}
+  <form method="get" style="margin-bottom:12px">
+    <label class="hint">Gameweek <input type="number" name="gw" value="{{ gw }}" min="1" max="38" style="width:60px"></label>
+    <label class="hint" style="margin-left:8px">Max ownership %
+      <input type="number" name="own" value="{{ max_own }}" min="1" max="50" step="1" style="width:60px"></label>
+    <button class="btn" style="margin-left:8px;padding:5px 14px" type="submit">Find</button>
+  </form>
+  {% if not rows %}
+    <p class="hint">No differentials match — try raising the ownership cap.</p>
+  {% else %}
+  <table>
+    <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Opp</th><th>£</th><th>Form</th><th>%Own</th><th>xPts</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="{{ 't1' if loop.index0<5 else 't2' if loop.index0<10 else 't3' }}">
+        <td class="rk">{{ loop.index }}</td>
+        <td class="tn">{{ r.name }}</td>
+        <td>{{ r.position }}</td><td class="mono">{{ r.team }}</td>
+        <td class="mono"><span class="fx {{ 'fx-g' if r.venue=='H' else 'fx-y' }}">{{ r.opp }} ({{ r.venue }})</span></td>
+        <td class="mono">{{ '%.1f'|format(r.price) }}</td>
+        <td class="mono">{{ '%.1f'|format(r.form) }}</td>
+        <td class="mono cnt-md">{{ '%.1f'|format(r.selected_by) }}%</td>
+        <td class="mono cnt-hi" style="font-weight:800">{{ r.xpts }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

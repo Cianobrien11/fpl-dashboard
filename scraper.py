@@ -107,6 +107,54 @@ def build_fixture_map(bootstrap: dict, fixtures: list[dict]) -> dict:
     return out
 
 
+def build_team_strength(bootstrap: dict) -> dict:
+    """
+    Capture FPL's own team strength ratings (updated on recent form) for use
+    in form-weighted fixture difficulty.
+
+    Returns {team_name: {ov_home, ov_away, form, position, played, points}}.
+    ov_* are on a 1-5 scale (5 = strongest).
+    """
+    out = {}
+    for t in bootstrap.get("teams", []):
+        code = t.get("short_name", "").upper()
+        name = FPL_NAME_MAP.get(code, t["name"])
+        out[name] = {
+            "ov_home": t.get("strength_overall_home", 3),
+            "ov_away": t.get("strength_overall_away", 3),
+            "form": float(t.get("form") or 0),
+            "position": t.get("position", 0),
+            "played": t.get("played", 0),
+            "points": t.get("points", 0),
+        }
+    return out
+
+
+def build_results(bootstrap: dict, fixtures: list[dict]) -> dict:
+    """
+    Capture FINISHED match results by gameweek for prediction accuracy scoring.
+    Returns {gw: [{home, away, hs, as}]} using canonical team names.
+    """
+    id_to_name = {}
+    for t in bootstrap.get("teams", []):
+        code = t.get("short_name", "").upper()
+        id_to_name[t["id"]] = FPL_NAME_MAP.get(code, t["name"])
+    out = {}
+    for fx in fixtures:
+        if not fx.get("finished"):
+            continue
+        gw = fx.get("event")
+        h = id_to_name.get(fx.get("team_h"))
+        a = id_to_name.get(fx.get("team_a"))
+        if gw is None or not h or not a:
+            continue
+        out.setdefault(str(gw), []).append({
+            "home": h, "away": a,
+            "hs": fx.get("team_h_score"), "as": fx.get("team_a_score"),
+        })
+    return out
+
+
 def build_player_prices(bootstrap: dict) -> list[dict]:
     """
     Return rich per-player records from the FPL bootstrap.
@@ -413,6 +461,8 @@ def scrape_all() -> dict[str, Any]:
         fixtures = fetch_fpl_fixtures()
         bundle["fixtures"] = build_fixture_map(bootstrap, fixtures)
         bundle["players"] = build_player_prices(bootstrap)
+        bundle["team_strength"] = build_team_strength(bootstrap)
+        bundle["results"] = build_results(bootstrap, fixtures)
         events = bootstrap.get("events", [])
         nxt = next((e["id"] for e in events if e.get("is_next")), None)
         cur = next((e["id"] for e in events if e.get("is_current")), None)

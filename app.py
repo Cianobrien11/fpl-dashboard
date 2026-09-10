@@ -52,7 +52,7 @@ def dashboard():
     gw_from = int(request.args.get("from", snap.get("next_gw") or GW_FROM_DEFAULT))
     # default to the full remaining season (through GW38); cap at 38
     gw_to = min(int(request.args.get("to", 38)), 38)
-    rankings = analytics.compute_rankings(snap["team_stats"])
+    rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
     tables = analytics.build_target_tables(rankings, snap["fixtures"], gw_from, gw_to)
     gws = list(range(gw_from, gw_to + 1))
     scatter = analytics.scatter_data(rankings)
@@ -69,7 +69,7 @@ def dashboard():
 def predictions():
     snap = _ensure_data()
     gw = int(request.args.get("gw", snap.get("next_gw") or GW_FROM_DEFAULT))
-    rankings = analytics.compute_rankings(snap["team_stats"])
+    rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
     preds = analytics.predict_gameweek(rankings, snap["fixtures"], gw)
     return render_template("predictions.html", preds=preds, gw=gw,
                            scraped_at=snap.get("scraped_at", "—"),
@@ -99,7 +99,7 @@ def my_team():
 
     squad = models.load_squad()
     gw = int(request.args.get("gw", snap.get("next_gw") or GW_FROM_DEFAULT))
-    rankings = analytics.compute_rankings(snap["team_stats"])
+    rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
     caps = analytics.captain_picks(rankings, snap["fixtures"], squad, gw)
     # transfer hints: squad players whose team has a poor upcoming run
     tables = analytics.build_target_tables(rankings, snap["fixtures"], gw, gw + 4)
@@ -123,9 +123,12 @@ def my_team():
         "over_club": [t for t, c in club_counts.items() if c > 3],
         "size": len(squad),
     }
+    # fixture ticker for the user's 15 over the next 6 GWs
+    ticker = analytics.my_team_ticker(squad, rankings, snap["fixtures"],
+                                      gw, min(gw + 5, 38)) if squad else None
     return render_template("my_team.html", squad=squad, caps=caps, hints=hints,
                            gw=gw, players=players, has_players=bool(players),
-                           validity=validity,
+                           validity=validity, ticker=ticker,
                            scraped_at=snap.get("scraped_at", "—"),
                            active="my_team")
 
@@ -137,7 +140,7 @@ def planner():
     gw_to = int(request.args.get("to", gw_from + 7))
     squad = models.load_squad()
     players = _players(snap)
-    rankings = analytics.compute_rankings(snap["team_stats"])
+    rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
     # player-level targets per GW + an overall next-N-GW view
     next_gw = snap.get("next_gw") or GW_FROM_DEFAULT
     gw_targets = {gw: analytics.gw_player_targets(players, rankings, snap["fixtures"],
@@ -202,7 +205,9 @@ def set_pieces_page():
 def prices_page():
     snap = _ensure_data()
     pc = analytics.price_changes(_players(snap))
+    pred = analytics.price_predictions(_players(snap))
     return render_template("prices.html", risers=pc["risers"], fallers=pc["fallers"],
+                           pred_rising=pred["rising"], pred_falling=pred["falling"],
                            has_data=bool(_players(snap)),
                            scraped_at=snap.get("scraped_at", "—"), active="prices")
 
@@ -226,6 +231,65 @@ def value_page():
                            scraped_at=snap.get("scraped_at", "—"), active="value")
 
 
+@app.route("/xpts")
+def xpts_page():
+    snap = _ensure_data()
+    pl = _players(snap)
+    gw = int(request.args.get("gw", snap.get("next_gw") or GW_FROM_DEFAULT))
+    position = request.args.get("position", "ALL")
+    rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
+    rows = analytics.expected_points(pl, rankings, snap["fixtures"], gw)
+    if position != "ALL":
+        rows = [r for r in rows if r["position"] == position]
+    return render_template("xpts.html", rows=rows[:50], gw=gw, position=position,
+                           has_data=bool(pl), scraped_at=snap.get("scraped_at", "—"),
+                           active="xpts")
+
+
+@app.route("/captaincy")
+def captaincy_page():
+    snap = _ensure_data()
+    pl = _players(snap)
+    gw = int(request.args.get("gw", snap.get("next_gw") or GW_FROM_DEFAULT))
+    rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
+    rows = analytics.captaincy_board(pl, rankings, snap["fixtures"], gw)
+    return render_template("captaincy.html", rows=rows, gw=gw, has_data=bool(pl),
+                           scraped_at=snap.get("scraped_at", "—"), active="captaincy")
+
+
+@app.route("/differentials")
+def differentials_page():
+    snap = _ensure_data()
+    pl = _players(snap)
+    gw = int(request.args.get("gw", snap.get("next_gw") or GW_FROM_DEFAULT))
+    max_own = float(request.args.get("own", 10))
+    rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
+    rows = analytics.differentials(pl, rankings, snap["fixtures"], gw, max_own)
+    return render_template("differentials.html", rows=rows, gw=gw, max_own=max_own,
+                           has_data=bool(pl), scraped_at=snap.get("scraped_at", "—"),
+                           active="differentials")
+
+
+@app.route("/radar")
+def radar_page():
+    snap = _ensure_data()
+    rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
+    rows = analytics.team_radar(rankings, snap.get("team_strength"))
+    return render_template("radar.html", rows=json.dumps(rows),
+                           has_data=bool(snap.get("team_stats")),
+                           scraped_at=snap.get("scraped_at", "—"), active="radar")
+
+
+@app.route("/accuracy")
+def accuracy_page():
+    snap = _ensure_data()
+    logs = models.load_prediction_logs()
+    results = snap.get("results", {})
+    report = analytics.score_predictions(logs, results)
+    return render_template("accuracy.html", report=report, n_logs=len(logs),
+                           scraped_at=snap.get("scraped_at", "—"), active="accuracy")
+
+
 def _do_refresh() -> dict:
     """Scrape fresh data and merge it over the cached snapshot.
 
@@ -240,8 +304,22 @@ def _do_refresh() -> dict:
         snap["fixtures"] = bundle["fixtures"]
     if bundle.get("players"):
         snap["players"] = bundle["players"]
+    if bundle.get("team_strength"):
+        snap["team_strength"] = bundle["team_strength"]
     if bundle.get("shots_source"):
         snap["shots_source"] = bundle["shots_source"]
+    if bundle.get("results"):
+        snap["results"] = bundle["results"]
+    # log this gameweek's predictions so we can score accuracy later
+    try:
+        nxt = bundle.get("next_gw") or snap.get("next_gw")
+        if nxt:
+            rk = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
+            preds = analytics.predict_gameweek(rk, snap["fixtures"], nxt)
+            if preds:
+                models.log_predictions(nxt, preds)
+    except Exception:  # noqa: BLE001
+        pass
     if bundle.get("current_gw"):
         snap["current_gw"] = bundle["current_gw"]
     if bundle.get("next_gw"):

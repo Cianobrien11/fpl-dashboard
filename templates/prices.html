@@ -42,6 +42,38 @@
       </table>
     </div>
   </div>
+
+  <h2 style="margin-top:20px">&#128200; Tonight's Predicted Changes</h2>
+  <p class="hint">Likely price moves based on this gameweek's net transfer momentum (transfers in &minus; out).
+     Not official — FPL's exact thresholds are hidden — but a strong signal of who's about to rise or fall.</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="chart-grid">
+    <div>
+      <h2 style="font-size:14px;margin-bottom:6px;color:var(--primary)">&#9650; Likely to rise</h2>
+      <table>
+        <thead><tr><th>Player</th><th>Team</th><th>£</th><th>Net transfers</th></tr></thead>
+        <tbody>
+        {% for p in pred_rising %}
+          <tr><td class="tn">{{ p.name }}</td><td class="mono">{{ p.team }}</td>
+              <td class="mono">{{ '%.1f'|format(p.price) }}</td>
+              <td class="mono cnt-hi">+{{ '{:,}'.format(p.net) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h2 style="font-size:14px;margin-bottom:6px;color:var(--red-tx)">&#9660; Likely to fall</h2>
+      <table>
+        <thead><tr><th>Player</th><th>Team</th><th>£</th><th>Net transfers</th></tr></thead>
+        <tbody>
+        {% for p in pred_falling %}
+          <tr><td class="tn">{{ p.name }}</td><td class="mono">{{ p.team }}</td>
+              <td class="mono">{{ '%.1f'|format(p.price) }}</td>
+              <td class="mono" style="color:var(--red-tx)">{{ '{:,}'.format(p.net) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

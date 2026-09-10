@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Expected Points — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>Expected Points (xPts) &mdash; GW{{ gw }}</h2>
+  <p class="hint">Projected points for the gameweek: appearance likelihood (minutes security) + attacking returns
+     (xGI/90 &times; fixture ease) + clean-sheet &amp; defensive-contribution potential + a set-piece boost for penalty takers.
+     A transparent "who to buy / captain" ranking.</p>
+  {% if not has_data %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% else %}
+  <form method="get" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+    <label class="hint">Gameweek <input type="number" name="gw" value="{{ gw }}" min="1" max="38" style="width:60px"></label>
+    <select name="position">
+      {% for p in ['ALL','GK','DEF','MID','FWD'] %}
+        <option value="{{ p }}" {{ 'selected' if position==p }}>{{ 'All positions' if p=='ALL' else p }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn" type="submit">Apply</button>
+  </form>
+  <table>
+    <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Opp</th><th>£</th><th>Form</th><th>%Own</th><th>xPts</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="{{ 't1' if loop.index0<5 else 't2' if loop.index0<15 else 't3' }}">
+        <td class="rk">{{ loop.index }}</td>
+        <td class="tn">{% if loop.index0==0 %}&#128081; {% endif %}{{ r.name }}</td>
+        <td>{{ r.position }}</td>
+        <td class="mono">{{ r.team }}</td>
+        <td class="mono"><span class="fx {{ 'fx-g' if r.venue=='H' else 'fx-y' }}">{{ r.opp }} ({{ r.venue }})</span></td>
+        <td class="mono">{{ '%.1f'|format(r.price) }}</td>
+        <td class="mono">{{ '%.1f'|format(r.form) }}</td>
+        <td class="mono">{{ '%.1f'|format(r.selected_by) }}%</td>
+        <td class="mono cnt-hi" style="font-weight:800">{{ r.xpts }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint" style="margin-top:8px">Top {{ rows|length }} by projected points. Model weights live in <code>analytics.py</code> and are easy to tune.</p>
+  {% endif %}
+</div>
+{% endblock %}

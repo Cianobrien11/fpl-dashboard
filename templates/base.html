@@ -85,8 +85,13 @@ form.inline{display:inline}
   <nav>
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active=='dashboard' }}">Targets</a>
     <a href="{{ url_for('predictions') }}" class="{{ 'active' if active=='predictions' }}">Predictions</a>
+    <a href="{{ url_for('accuracy_page') }}" class="{{ 'active' if active=='accuracy' }}">Accuracy</a>
     <a href="{{ url_for('planner') }}" class="{{ 'active' if active=='planner' }}">Planner</a>
+    <a href="{{ url_for('captaincy_page') }}" class="{{ 'active' if active=='captaincy' }}">Captaincy</a>
+    <a href="{{ url_for('differentials_page') }}" class="{{ 'active' if active=='differentials' }}">Differentials</a>
+    <a href="{{ url_for('radar_page') }}" class="{{ 'active' if active=='radar' }}">Team Radar</a>
     <a href="{{ url_for('players_page') }}" class="{{ 'active' if active=='players' }}">Players</a>
+    <a href="{{ url_for('xpts_page') }}" class="{{ 'active' if active=='xpts' }}">xPts</a>
     <a href="{{ url_for('value_page') }}" class="{{ 'active' if active=='value' }}">Value</a>
     <a href="{{ url_for('set_pieces_page') }}" class="{{ 'active' if active=='set_pieces' }}">Set Pieces</a>
     <a href="{{ url_for('prices_page') }}" class="{{ 'active' if active=='prices' }}">Prices</a>
