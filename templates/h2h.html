@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Head-to-Head — FPL Dashboard{% endblock %}
+{% block content %}
+<div class="wrap">
+  <h2>Player vs Next Opponent &mdash; GW{{ gw }}</h2>
+  <p class="hint">Each player's <b>all-time record</b> against the team they face this gameweek (from Understat's match history).
+     E.g. if Man City play United, you'll see Haaland's career goals/assists vs United. Ranked by goals scored against that opponent.</p>
+
+  {% if not has_data %}
+    <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
+  {% elif not has_h2h %}
+    <div class="err" style="background:var(--panel2);color:var(--muted)">
+      Head-to-head history isn't loaded yet. It's fetched by the weekly data job (GitHub Action) from Understat —
+      run that Action once, or wait for the next scheduled run, and records will appear here.
+    </div>
+  {% elif not rows %}
+    <p class="hint">No prior head-to-head records found for this gameweek's fixtures yet.</p>
+  {% else %}
+  <form method="get" style="margin-bottom:12px">
+    <label class="hint">Gameweek <input type="number" name="gw" value="{{ gw }}" min="1" max="38" style="width:60px"></label>
+    <button class="btn" style="margin-left:8px;padding:5px 14px" type="submit">Show</button>
+  </form>
+  <table>
+    <thead><tr>
+      <th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>vs Opponent</th>
+      <th>Games</th><th>Goals</th><th>Assists</th><th>G+A</th><th>Goals/game</th><th>xG</th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="{{ 't1' if loop.index0<5 else 't2' if loop.index0<15 else 't3' }}">
+        <td class="rk">{{ loop.index }}</td>
+        <td class="tn">{{ r.name }}</td>
+        <td>{{ r.position }}</td>
+        <td class="mono">{{ r.team }}</td>
+        <td class="mono"><span class="fx {{ 'fx-g' if r.venue=='H' else 'fx-y' }}">{{ r.opponent }} ({{ r.venue }})</span></td>
+        <td class="mono">{{ r.games }}</td>
+        <td class="mono cnt-hi" style="font-weight:800">{{ r.goals }}</td>
+        <td class="mono">{{ r.assists }}</td>
+        <td class="mono">{{ r.gi }}</td>
+        <td class="mono">{{ '%.2f'|format(r.gpg) }}</td>
+        <td class="mono">{{ '%.1f'|format(r.xg) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint" style="margin-top:8px">All-time Understat data (2014/15 onward). Players with no prior meeting are omitted.</p>
+  {% endif %}
+</div>
+{% endblock %}

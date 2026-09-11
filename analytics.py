@@ -939,3 +939,41 @@ def expected_points_range(players: list, rankings: dict, fixtures: dict,
         out.append(a)
     out.sort(key=lambda r: -r["total_xpts"])
     return out
+
+
+def h2h_vs_next_opponent(players: list, h2h: dict, fixtures: dict,
+                         rankings: dict, next_gw: int) -> list:
+    """
+    For each player, look up their all-time record vs their NEXT opponent.
+
+    h2h: {"surname|squad": {opponent_team: {games, goals, assists, xg}}}
+    Returns rows sorted by goals-vs-that-opponent desc, for the H2H page.
+    Only includes players who have a prior record vs the upcoming opponent.
+    """
+    def _key(p):
+        last = p.get("name", "").split()[-1]
+        if "." in last:
+            last = last.split(".")[-1]
+        return f"{last.lower()}|{p.get('team','')}"
+
+    out = []
+    for p in players:
+        team = p.get("team")
+        fx = next((f for f in fixtures.get(team, []) if f["gw"] == next_gw), None)
+        if not fx:
+            continue
+        opp = fx["opponent"]
+        rec = (h2h.get(_key(p)) or {}).get(opp)
+        if not rec or rec.get("games", 0) == 0:
+            continue
+        g = rec["games"]
+        out.append({
+            "name": p["name"], "team": team, "position": p.get("position"),
+            "price": p.get("price", 0), "opponent": opp, "venue": fx["venue"],
+            "games": g, "goals": rec.get("goals", 0), "assists": rec.get("assists", 0),
+            "xg": rec.get("xg", 0),
+            "gpg": round(rec.get("goals", 0) / g, 2),
+            "gi": rec.get("goals", 0) + rec.get("assists", 0),
+        })
+    out.sort(key=lambda r: (-r["goals"], -r["gi"]))
+    return out

@@ -81,6 +81,69 @@ def scrape() -> dict:
     return out
 
 
+def scrape_h2h(max_players: int = 350) -> dict:
+    """
+    Build all-time per-opponent records for EPL players from Understat.
+
+    For each current EPL player we fetch their full match history and total
+    goals / assists / games / xG grouped by the OPPONENT team. This powers the
+    "player vs next opponent" section.
+
+    Returns {"surname|Squad": {opponent_canonical: {games, goals, assists, xg}}}
+    keyed the same way as the shots data so the app matches identically.
+    """
+    from understatapi import UnderstatClient
+
+    out = {}
+    with UnderstatClient() as understat:
+        players = understat.league(league="EPL").get_player_data(season=SEASON)
+        # only players with meaningful minutes this season (keeps it quick)
+        players = [p for p in players if _f(p.get("time")) >= 45][:max_players]
+
+        for p in players:
+            pid = p.get("id")
+            name = (p.get("player_name") or "").strip()
+            team_title = (p.get("team_title") or "").strip()
+            if not pid or not name:
+                continue
+            try:
+                matches = understat.player(player=str(pid)).get_match_data()
+            except Exception:  # noqa: BLE001
+                continue
+
+            recs = {}
+            for m in matches:
+                # opponent is whichever side isn't the player's team in that match
+                h, a = (m.get("h_team") or "").strip(), (m.get("a_team") or "").strip()
+                # the player's team for that match isn't directly given per row,
+                # so infer: opponent = the team that isn't the player's CURRENT
+                # club title where possible; fall back to using both sides minus
+                # the most-frequent (their club).
+                opp_raw = None
+                # roster/side hints aren't always present; use goals context:
+                # Understat match rows include 'h_a' = 'h' or 'a' for the player.
+                side = m.get("h_a")
+                if side == "h":
+                    opp_raw = a
+                elif side == "a":
+                    opp_raw = h
+                else:
+                    continue
+                opp = UNDERSTAT_TEAM.get(opp_raw, opp_raw)
+                r = recs.setdefault(opp, {"games": 0, "goals": 0, "assists": 0, "xg": 0.0})
+                r["games"] += 1
+                r["goals"] += int(_f(m.get("goals")))
+                r["assists"] += int(_f(m.get("assists")))
+                r["xg"] += _f(m.get("xG"))
+            if not recs:
+                continue
+            for opp in recs:
+                recs[opp]["xg"] = round(recs[opp]["xg"], 2)
+            squad = UNDERSTAT_TEAM.get(team_title, team_title)
+            out[f"{name.split()[-1].lower()}|{squad}"] = recs
+    return out
+
+
 def main() -> int:
     app_url = os.environ.get("APP_URL", "").rstrip("/")
     token = os.environ.get("CRON_TOKEN", "")
@@ -106,6 +169,19 @@ def main() -> int:
                          json={"players": data}, timeout=60)
     print("POST /ingest/shots ->", resp.status_code, resp.text[:300])
     resp.raise_for_status()
+
+    # --- all-time head-to-head records (best-effort; failure won't fail the job)
+    try:
+        h2h = scrape_h2h()
+        print(f"Built H2H records for {len(h2h)} players")
+        if len(h2h) >= 20:
+            r2 = requests.post(f"{app_url}/ingest/h2h",
+                               params={"token": token},
+                               json={"players": h2h}, timeout=120)
+            print("POST /ingest/h2h ->", r2.status_code, r2.text[:300])
+    except Exception as exc:  # noqa: BLE001
+        print(f"H2H build skipped: {exc}", file=sys.stderr)
+
     return 0
 
 

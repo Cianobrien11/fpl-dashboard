@@ -304,6 +304,19 @@ def accuracy_page():
                            scraped_at=snap.get("scraped_at", "—"), active="accuracy")
 
 
+@app.route("/h2h")
+def h2h_page():
+    snap = _ensure_data()
+    pl = _players(snap)
+    h2h = snap.get("h2h") or {}
+    gw = int(request.args.get("gw", snap.get("next_gw") or GW_FROM_DEFAULT))
+    rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
+    rows = analytics.h2h_vs_next_opponent(pl, h2h, snap["fixtures"], rankings, gw)
+    return render_template("h2h.html", rows=rows, gw=gw,
+                           has_h2h=bool(h2h), has_data=bool(pl),
+                           scraped_at=snap.get("scraped_at", "—"), active="h2h")
+
+
 def _do_refresh() -> dict:
     """Scrape fresh data and merge it over the cached snapshot.
 
@@ -427,7 +440,28 @@ def ingest_shots():
     models.save_snapshot(snap)
     return jsonify({"status": "ok", "matched": matched, "received": len(incoming)})
 
-@app.template_filter("dcls")
+
+@app.route("/ingest/h2h", methods=["POST"])
+def ingest_h2h():
+    """
+    Receive all-time player-vs-opponent records from the GitHub Action.
+
+    Body: {"players": {"surname|Squad": {opponent: {games, goals, assists, xg}}}}
+    Stored as-is in the snapshot under "h2h"; resolved per-player at render time
+    against each player's NEXT opponent.
+    """
+    expected = os.environ.get("CRON_TOKEN", "")
+    if not expected or request.args.get("token") != expected:
+        abort(403)
+    payload = request.get_json(silent=True) or {}
+    incoming = payload.get("players") or {}
+    if len(incoming) < 20:
+        return jsonify({"status": "error", "reason": "too few players"}), 400
+    snap = _ensure_data()
+    snap["h2h"] = incoming
+    models.save_snapshot(snap)
+    return jsonify({"status": "ok", "received": len(incoming)})
+
 def difficulty_class(d: int) -> str:
     return {0: "fx-g", 1: "fx-y", 2: "fx-r"}.get(d, "fx-y")
 

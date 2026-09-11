@@ -85,6 +85,7 @@ form.inline{display:inline}
   <nav>
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if active=='dashboard' }}">Targets</a>
     <a href="{{ url_for('predictions') }}" class="{{ 'active' if active=='predictions' }}">Predictions</a>
+    <a href="{{ url_for('h2h_page') }}" class="{{ 'active' if active=='h2h' }}">H2H</a>
     <a href="{{ url_for('accuracy_page') }}" class="{{ 'active' if active=='accuracy' }}">Accuracy</a>
     <a href="{{ url_for('planner') }}" class="{{ 'active' if active=='planner' }}">Planner</a>
     <a href="{{ url_for('captaincy_page') }}" class="{{ 'active' if active=='captaincy' }}">Captaincy</a>
