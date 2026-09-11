@@ -26,6 +26,9 @@ import sys
 import requests
 
 SEASON = os.environ.get("UNDERSTAT_SEASON", "2026")  # 2026 = 2026/27 season
+# H2H window: last 2 seasons (current + previous). Understat match rows carry
+# a 'season' field ("2026", "2025", ...). Only these count toward H2H.
+H2H_SEASONS = {str(int(SEASON)), str(int(SEASON) - 1)}
 
 # Understat team_title -> our canonical team names
 UNDERSTAT_TEAM = {
@@ -83,7 +86,7 @@ def scrape() -> dict:
 
 def scrape_h2h(max_players: int = 350) -> dict:
     """
-    Build all-time per-opponent records for EPL players from Understat.
+    Build LAST-2-SEASONS per-opponent records for EPL players from Understat.
 
     For each current EPL player we fetch their full match history and total
     goals / assists / games / xG grouped by the OPPONENT team. This powers the
@@ -122,6 +125,9 @@ def scrape_h2h(max_players: int = 350) -> dict:
                 opp_raw = None
                 # roster/side hints aren't always present; use goals context:
                 # Understat match rows include 'h_a' = 'h' or 'a' for the player.
+                # last-2-seasons filter
+                if str(m.get("season", "")) not in H2H_SEASONS:
+                    continue
                 side = m.get("h_a")
                 if side == "h":
                     opp_raw = a

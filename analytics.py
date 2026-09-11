@@ -944,7 +944,8 @@ def expected_points_range(players: list, rankings: dict, fixtures: dict,
 def h2h_vs_next_opponent(players: list, h2h: dict, fixtures: dict,
                          rankings: dict, next_gw: int) -> list:
     """
-    For each player, look up their all-time record vs their NEXT opponent.
+    Forwards & mids who have scored or assisted vs their NEXT opponent
+    (over the seasons the Action supplied — last 2).
 
     h2h: {"surname|squad": {opponent_team: {games, goals, assists, xg}}}
     Returns rows sorted by goals-vs-that-opponent desc, for the H2H page.
@@ -958,6 +959,9 @@ def h2h_vs_next_opponent(players: list, h2h: dict, fixtures: dict,
 
     out = []
     for p in players:
+        # only attacking players — forwards & midfielders
+        if p.get("position") not in ("MID", "FWD"):
+            continue
         team = p.get("team")
         fx = next((f for f in fixtures.get(team, []) if f["gw"] == next_gw), None)
         if not fx:
@@ -965,6 +969,9 @@ def h2h_vs_next_opponent(players: list, h2h: dict, fixtures: dict,
         opp = fx["opponent"]
         rec = (h2h.get(_key(p)) or {}).get(opp)
         if not rec or rec.get("games", 0) == 0:
+            continue
+        # must have actually scored or assisted vs this opponent
+        if (rec.get("goals", 0) + rec.get("assists", 0)) == 0:
             continue
         g = rec["games"]
         out.append({

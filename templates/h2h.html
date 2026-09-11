@@ -3,8 +3,8 @@
 {% block content %}
 <div class="wrap">
   <h2>Player vs Next Opponent &mdash; GW{{ gw }}</h2>
-  <p class="hint">Each player's <b>all-time record</b> against the team they face this gameweek (from Understat's match history).
-     E.g. if Man City play United, you'll see Haaland's career goals/assists vs United. Ranked by goals scored against that opponent.</p>
+  <p class="hint"><b>Forwards &amp; midfielders</b> who have <b>scored or assisted</b> against the team they face this gameweek,
+     over the <b>last 2 seasons</b> (Understat match history). E.g. if Man City play United, you'll see who's found the net vs United. Ranked by goals.</p>
 
   {% if not has_data %}
     <div class="err">No player data yet — click <b>&#8635; Refresh Data</b> to pull it from the FPL API.</div>
@@ -43,7 +43,7 @@
     {% endfor %}
     </tbody>
   </table>
-  <p class="hint" style="margin-top:8px">All-time Understat data (2014/15 onward). Players with no prior meeting are omitted.</p>
+  <p class="hint" style="margin-top:8px">Last 2 seasons of Understat data. Only forwards/mids with a goal or assist vs this opponent are shown.</p>
   {% endif %}
 </div>
 {% endblock %}
