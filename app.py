@@ -235,13 +235,27 @@ def value_page():
 def xpts_page():
     snap = _ensure_data()
     pl = _players(snap)
-    gw = int(request.args.get("gw", snap.get("next_gw") or GW_FROM_DEFAULT))
+    next_gw = snap.get("next_gw") or GW_FROM_DEFAULT
+    gw = int(request.args.get("gw", next_gw))
     position = request.args.get("position", "ALL")
+    # multi-GW mode: ?to=<gw> aggregates xPts across gw..to
+    gw_to = request.args.get("to")
     rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
+    if gw_to:
+        gw_to = min(int(gw_to), 38)
+        rows = analytics.expected_points_range(pl, rankings, snap["fixtures"], gw, gw_to)
+        if position != "ALL":
+            rows = [r for r in rows if r["position"] == position]
+        gws = list(range(gw, gw_to + 1))
+        return render_template("xpts.html", rows=rows[:50], gw=gw, gw_to=gw_to,
+                               gws=gws, position=position, mode="range",
+                               has_data=bool(pl), scraped_at=snap.get("scraped_at", "—"),
+                               active="xpts")
     rows = analytics.expected_points(pl, rankings, snap["fixtures"], gw)
     if position != "ALL":
         rows = [r for r in rows if r["position"] == position]
-    return render_template("xpts.html", rows=rows[:50], gw=gw, position=position,
+    return render_template("xpts.html", rows=rows[:50], gw=gw, gw_to=None,
+                           gws=None, position=position, mode="single",
                            has_data=bool(pl), scraped_at=snap.get("scraped_at", "—"),
                            active="xpts")
 

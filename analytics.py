@@ -902,3 +902,40 @@ def score_predictions(logs: list, results: dict) -> dict:
         "exact_pct": round(100 * tot_e / tot_n) if tot_n else 0,
     }
     return {"per_gw": per_gw, "overall": overall}
+
+
+def expected_points_range(players: list, rankings: dict, fixtures: dict,
+                          gw_from: int, gw_to: int) -> list:
+    """
+    Sum each player's projected xPts across a gameweek window.
+
+    Runs expected_points for every GW in the range and totals per player, so
+    you can target who will accumulate the most over the next N weeks (great
+    for planning transfers ahead). Also returns the per-GW breakdown and the
+    number of "green" (easy) fixtures in the window.
+
+    Returns [{name, team, position, price, selected_by, total_xpts, per_gw:
+              {gw: xpts}, easy_n, avg_xpts}], sorted by total_xpts desc.
+    """
+    gws = list(range(gw_from, gw_to + 1))
+    agg = {}
+    for gw in gws:
+        for r in expected_points(players, rankings, fixtures, gw):
+            key = (r["name"], r["team"])
+            a = agg.setdefault(key, {
+                "name": r["name"], "team": r["team"], "position": r["position"],
+                "price": r["price"], "selected_by": r["selected_by"],
+                "total_xpts": 0.0, "per_gw": {}, "easy_n": 0,
+            })
+            a["total_xpts"] += r["xpts"]
+            a["per_gw"][gw] = r["xpts"]
+            if r.get("fix_d") == 0:
+                a["easy_n"] += 1
+    out = []
+    for a in agg.values():
+        n = len(a["per_gw"]) or 1
+        a["total_xpts"] = round(a["total_xpts"], 1)
+        a["avg_xpts"] = round(a["total_xpts"] / n, 1)
+        out.append(a)
+    out.sort(key=lambda r: -r["total_xpts"])
+    return out
