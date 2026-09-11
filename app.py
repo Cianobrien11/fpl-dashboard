@@ -462,6 +462,8 @@ def ingest_h2h():
     models.save_snapshot(snap)
     return jsonify({"status": "ok", "received": len(incoming)})
 
+
+@app.template_filter("dcls")
 def difficulty_class(d: int) -> str:
     return {0: "fx-g", 1: "fx-y", 2: "fx-r"}.get(d, "fx-y")
 
