@@ -20,7 +20,7 @@
         <td class="rk">{{ loop.index }}</td>
         <td class="tn">{% if loop.index0==0 %}&#128081; {% endif %}{{ r.name }}</td>
         <td>{{ r.position }}</td><td class="mono">{{ r.team }}</td>
-        <td class="mono"><span class="fx {{ 'fx-g' if r.venue=='H' else 'fx-y' }}">{{ r.opp }} ({{ r.venue }})</span></td>
+        <td class="mono"><span class="fx {{ 'fx-g' if r.fix_d==0 else 'fx-r' if r.fix_d==2 else 'fx-y' }}">{{ r.opp }} ({{ r.venue }})</span></td>
         <td class="mono">{{ '%.1f'|format(r.price) }}</td>
         <td class="mono">{{ '%.1f'|format(r.selected_by) }}%</td>
         <td class="mono cnt-hi" style="font-weight:800">{{ r.xpts }}</td>

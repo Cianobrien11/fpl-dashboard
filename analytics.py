@@ -634,11 +634,38 @@ _GOAL_PTS = {"GK": 6, "DEF": 6, "MID": 5, "FWD": 4}
 _CS_PTS = {"GK": 4, "DEF": 4, "MID": 1, "FWD": 0}
 
 
-def _fixture_ease_for(player_pos: str, opp_ranks: dict, venue: str) -> float:
-    """Return a 0..1 fixture-ease multiplier for a player based on position.
+# league-average xG / xGA per game (updated from the ranking pool at call time)
+def _league_avg(rankings: dict, key: str) -> float:
+    vals = [r.get(key, 0) / 3.0 for r in rankings.values() if r.get(key)]
+    return (sum(vals) / len(vals)) if vals else 1.4
 
-    Attackers judged on goals-fixture, defenders/keepers on clean-sheet fixture.
-    easy (tier 0) -> 1.15, medium -> 1.0, hard -> 0.82."""
+
+def _attack_multiplier(opp: dict, venue: str, league_xga: float) -> float:
+    """
+    Continuous attacking-fixture multiplier for a player facing `opp`.
+
+    Scales by how the opponent's DEFENCE (xGA/game) compares to the league
+    average — facing a mean defence gives ~1.0, a leaky one boosts >1, an
+    elite one (e.g. Arsenal ~0.33/gm vs ~1.5 avg) cuts sharply toward ~0.4.
+    Home/away tilts it +/-8%. Clamped to a sensible 0.35-1.8 band.
+    """
+    opp_xga_g = (opp.get("xga", 0) or 0) / 3.0
+    ratio = opp_xga_g / league_xga if league_xga else 1.0
+    mult = ratio * (1.08 if venue == "H" else 0.92)
+    return max(0.35, min(1.8, mult))
+
+
+def _cs_multiplier(opp: dict, venue: str, league_xg: float) -> float:
+    """Clean-sheet-fixture multiplier: scales by opponent ATTACK strength.
+    Facing a weak attack raises CS chance; a strong one lowers it."""
+    opp_xg_g = (opp.get("xg", 0) or 0) / 3.0
+    ratio = league_xg / opp_xg_g if opp_xg_g else 1.5
+    mult = ratio * (1.08 if venue == "H" else 0.92)
+    return max(0.35, min(1.8, mult))
+
+
+def _fixture_ease_for(player_pos: str, opp_ranks: dict, venue: str) -> float:
+    """Kept for callers that still want the coarse 3-tier ease (0.82-1.15)."""
     cat = "gs" if player_pos in ("MID", "FWD") else "cs"
     d = _difficulty(cat, opp_ranks, venue)
     return {0: 1.15, 1: 1.0, 2: 0.82}[d]
@@ -656,6 +683,8 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
       * set-piece bonus: penalty takers get an attacking uplift
     Not a black box — weights live here and are easy to tune.
     """
+    league_xga = _league_avg(rankings, "xga")
+    league_xg = _league_avg(rankings, "xg")
     out = []
     for p in players:
         team = p.get("team")
@@ -663,42 +692,45 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         if not fx or team not in rankings or fx["opponent"] not in rankings:
             continue
         pos = p.get("position", "MID")
+        opp = rankings[fx["opponent"]]
+        venue = fx["venue"]
         mins = p.get("minutes", 0)
         avg_min = p.get("avg_min", 0) or 0
-        # minutes security 0..1 (needs ~60+ avg mins to be "nailed")
         secure = max(0.0, min(1.0, avg_min / 80.0))
         if mins < 45:
             secure *= 0.4
         appearance = 2.0 * secure
 
-        ease = _fixture_ease_for(pos, rankings[fx["opponent"]], fx["venue"])
+        # CONTINUOUS fixture multipliers from the opponent's real xGA/xG
+        att_mult = _attack_multiplier(opp, venue, league_xga)
+        cs_mult = _cs_multiplier(opp, venue, league_xg)
 
-        # attacking: xGI per 90 -> expected goal involvements this match
+        # attacking: xGI/90 -> goal involvements, scaled by opponent defence
         xgi90 = p.get("xgi_pg", 0) or 0
-        goal_share = 0.6  # of involvements that are goals vs assists (rough)
-        exp_goals = xgi90 * goal_share * ease * secure
-        exp_assists = xgi90 * (1 - goal_share) * ease * secure
+        goal_share = 0.6
+        exp_goals = xgi90 * goal_share * att_mult * secure
+        exp_assists = xgi90 * (1 - goal_share) * att_mult * secure
         att_pts = exp_goals * _GOAL_PTS.get(pos, 4) + exp_assists * 3
-
-        # set-piece boost: primary penalty taker adds expected pen value
         if p.get("pen_order") == 1:
-            att_pts += 0.6 * ease
+            att_pts += 0.6 * att_mult
         elif p.get("ck_order") == 1 or p.get("fk_order") == 1:
-            att_pts += 0.2 * ease
+            att_pts += 0.2 * att_mult
 
-        # defensive: clean-sheet probability from fixture ease (CS-oriented)
-        cs_ease = _fixture_ease_for("DEF", rankings[fx["opponent"]], fx["venue"])
-        cs_prob = {1.15: 0.45, 1.0: 0.30, 0.82: 0.15}.get(round(cs_ease, 2), 0.30)
+        # defensive: clean-sheet chance scaled by opponent attack strength
+        base_cs = 0.30
+        cs_prob = max(0.03, min(0.65, base_cs * cs_mult))
         def_pts = cs_prob * _CS_PTS.get(pos, 0) * secure
-        # defensive contribution points (2 pts if hitting the DefCon threshold)
         if p.get("defcon_pg", 0) >= 10 and pos in ("DEF", "MID"):
             def_pts += 2.0 * secure
 
         xpts = round(appearance + att_pts + def_pts, 1)
+        # difficulty tier for the chip colour (real, not just home=green)
+        rel_cat = "gs" if pos in ("MID", "FWD") else "cs"
+        d = _difficulty(rel_cat, opp, venue)
         out.append({
             "name": p["name"], "team": team, "position": pos,
             "price": p.get("price", 0), "opp": CODE.get(fx["opponent"], fx["opponent"][:3]),
-            "venue": fx["venue"], "xpts": xpts,
+            "venue": venue, "xpts": xpts, "fix_d": d,
             "form": p.get("form", 0), "selected_by": p.get("selected_by", 0),
         })
     out.sort(key=lambda x: -x["xpts"])
