@@ -197,4 +197,41 @@ posFilter.onchange=renderPool; searchBox.oninput=renderPool;
 renderSquad(); renderPool();
 </script>
 {% endif %}
+
+{% if squad and fixture_history %}
+<div class="wrap">
+  <h2>&#128198; Upcoming Fixtures &amp; Your Players' Record vs Them</h2>
+  <p class="hint">Each of your players' next fixtures, with their <b>goals + assists against that opponent over the last 2 seasons</b>.
+     A cell like <b>2G 1A</b> means they've returned there recently; <b>&mdash;</b> means no prior meeting (or no H2H data yet).</p>
+  {% if not has_h2h %}
+    <div class="err" style="background:var(--panel2);color:var(--muted)">
+      Head-to-head history isn't loaded yet — it's fetched by the weekly data job (GitHub Action) from Understat.
+      Run that Action once and this fills in.
+    </div>
+  {% else %}
+  <div style="overflow-x:auto">
+  <table style="white-space:nowrap">
+    <thead><tr><th>Player</th><th>Pos</th>{% for g in fixture_history.gws %}<th style="text-align:center">{{ g }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in fixture_history.rows %}
+      <tr>
+        <td class="tn">{{ r.name }}</td><td>{{ r.position }}</td>
+        {% for f in r.fixtures %}
+          <td class="gwcol" style="min-width:74px" title="{{ f.opp_full }} ({{ f.venue }}) — {{ f.played }} game(s) in last 2 seasons: {{ f.goals }}G {{ f.assists }}A, {{ '%.1f'|format(f.xg) }} xG">
+            <div style="font-size:10px;font-weight:700">{{ f.opp }}({{ f.venue }})</div>
+            <div class="mono" style="font-size:11px;color:{{ 'var(--primary)' if f.gi>=2 else 'var(--yellow-tx)' if f.gi>=1 else 'var(--muted)' }}">
+              {% if f.played %}{{ f.goals }}G {{ f.assists }}A{% else %}&mdash;{% endif %}
+            </div>
+          </td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="hint" style="margin-top:8px">Hover a cell for games played &amp; xG. Last 2 seasons of Understat data. GK/DEF included but attackers listed first.</p>
+  {% endif %}
+</div>
+{% endif %}
+
 {% endblock %}

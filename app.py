@@ -126,9 +126,14 @@ def my_team():
     # fixture ticker for the user's 15 over the next 6 GWs
     ticker = analytics.my_team_ticker(squad, rankings, snap["fixtures"],
                                       gw, min(gw + 5, 38)) if squad else None
+    # upcoming fixtures + 2-year record vs each opponent (from H2H data)
+    fixture_history = analytics.squad_fixture_history(
+        squad, snap.get("h2h") or {}, snap["fixtures"], gw, min(gw + 5, 38)) if squad else None
     return render_template("my_team.html", squad=squad, caps=caps, hints=hints,
                            gw=gw, players=players, has_players=bool(players),
                            validity=validity, ticker=ticker,
+                           fixture_history=fixture_history,
+                           has_h2h=bool(snap.get("h2h")),
                            scraped_at=snap.get("scraped_at", "—"),
                            active="my_team")
 

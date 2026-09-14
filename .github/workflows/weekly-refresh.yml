@@ -1,15 +1,14 @@
-name: Weekly Data Refresh
+name: Daily Data Refresh
 
-# Weekly refresh of the FPL dashboard.
+# Daily refresh of the FPL dashboard.
 #  1. Trigger the app's own refresh (FPL API stats, fixtures, prices).
 #  2. Pull REAL shots/key-passes from Understat (via understatapi) on GitHub's
 #     runners — Understat serves the full data page to GitHub but not to a
 #     cloud host like Render — and POST the numbers to /ingest/shots.
-# Runs twice weekly — Friday & Tuesday 07:00 UTC — plus manual trigger.
+# Runs every day at 07:00 UTC — plus a manual "Run workflow" trigger.
 on:
   schedule:
-    - cron: "0 7 * * 5"   # 07:00 UTC every Friday (before the weekend deadline)
-    - cron: "0 7 * * 2"   # 07:00 UTC every Tuesday (catch midweek fixtures/prices)
+    - cron: "0 7 * * *"   # 07:00 UTC every day
   workflow_dispatch: {}    # manual "Run workflow" button
 
 jobs:

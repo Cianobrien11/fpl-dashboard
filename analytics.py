@@ -984,3 +984,46 @@ def h2h_vs_next_opponent(players: list, h2h: dict, fixtures: dict,
         })
     out.sort(key=lambda r: (-r["goals"], -r["gi"]))
     return out
+
+
+def squad_fixture_history(squad: list, h2h: dict, fixtures: dict,
+                          gw_from: int, gw_to: int) -> list:
+    """
+    For each squad player, list upcoming fixtures annotated with their record
+    (last 2 seasons) vs each opponent — from the H2H data supplied by the Action.
+
+    Returns [{name, team, position, fixtures:[{gw, opp, venue, played, goals,
+              assists, gi}]}], attackers first.
+    Each fixture shows the player's prior goals/assists vs that opponent
+    ("played" = games in the 2-year window; 0 = no prior meeting).
+    """
+    def _key(p):
+        last = p.get("name", "").split()[-1]
+        if "." in last:
+            last = last.split(".")[-1]
+        return f"{last.lower()}|{p.get('team','')}"
+
+    gws = list(range(gw_from, gw_to + 1))
+    rows = []
+    for p in squad:
+        prec = h2h.get(_key(p)) or {}
+        fixes = []
+        for gw in gws:
+            fx = next((f for f in fixtures.get(p.get("team"), []) if f["gw"] == gw), None)
+            if not fx:
+                continue
+            opp = fx["opponent"]
+            rec = prec.get(opp) or {}
+            g, a = rec.get("goals", 0), rec.get("assists", 0)
+            fixes.append({
+                "gw": gw, "opp": CODE.get(opp, opp[:3]), "opp_full": opp,
+                "venue": fx["venue"], "played": rec.get("games", 0),
+                "goals": g, "assists": a, "gi": g + a,
+                "xg": rec.get("xg", 0),
+            })
+        if fixes:
+            rows.append({"name": p["name"], "team": p.get("team"),
+                         "position": p.get("position"), "fixtures": fixes})
+    order = {"FWD": 0, "MID": 1, "DEF": 2, "GK": 3}
+    rows.sort(key=lambda r: order.get(r["position"], 4))
+    return {"gws": [f"GW{g}" for g in gws], "rows": rows}
