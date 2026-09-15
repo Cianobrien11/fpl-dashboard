@@ -452,7 +452,18 @@ def enrich_keypasses_from_fbref(players: list[dict]) -> None:
 
 
 def scrape_all() -> dict[str, Any]:
-    """Full weekly refresh. Returns a bundle the app persists to the DB."""
+    """
+    App-side refresh — FPL API ONLY. Lightweight and reliable.
+
+    IMPORTANT: this runs on Render's free tier (limited memory). It must NOT
+    scrape FBRef — those requests 403 on hosted IPs, trigger retry/backoff, and
+    loading pandas tips the worker over its memory limit (SIGKILL -> 500). All
+    FBRef/Understat work (shots, key passes, team xG/xGA) is done by the GitHub
+    Action (fbref_action.py) and pushed in via /ingest/* endpoints instead.
+
+    team_stats is intentionally NOT set here so the app keeps the last values
+    the Action supplied (merged in app._do_refresh, which never wipes on miss).
+    """
     bundle: dict[str, Any] = {"scraped_at": _dt.datetime.utcnow().isoformat()}
     errors = []
 
@@ -471,33 +482,15 @@ def scrape_all() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         errors.append(f"FPL API: {exc}")
 
-    # enrich players with shots/SoT + key passes (both single FBRef requests).
-    # FBRef often 403s on hosted IPs; if so we fall back to FPL threat/creativity.
+    # Populate shot columns from FPL-native proxies immediately (no scraping).
+    # The GitHub Action overwrites these with REAL Understat numbers via
+    # /ingest/shots; until then the columns are never empty and never crash.
     if bundle.get("players"):
-        try:
-            enrich_shots_from_fbref(bundle["players"])
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"Shots enrichment: {exc}")
-        try:
-            enrich_keypasses_from_fbref(bundle["players"])
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"Key-pass enrichment: {exc}")
-
-        # Did FBRef actually return usable shot data?
-        got_shots = sum(1 for p in bundle["players"] if p.get("shots_90", 0) > 0)
-        bundle["shots_source"] = "fbref" if got_shots >= 20 else "fpl_proxy"
-        if bundle["shots_source"] == "fpl_proxy":
-            # Fall back to FPL-native proxies so the columns are never empty.
-            for p in bundle["players"]:
-                p["shots_90"] = p.get("threat_90", 0.0)
-                p["sot_90"] = round(p.get("threat_90", 0.0) * 0.4, 1)  # ~SoT share
-                p["kp_90"] = p.get("creativity_90", 0.0)
-            errors.append("FBRef shots unavailable — using FPL threat/creativity proxy.")
-
-    try:
-        bundle["team_stats"] = fetch_fbref_team_stats()
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"FBRef: {exc}")
+        for p in bundle["players"]:
+            p.setdefault("shots_90", p.get("threat_90", 0.0))
+            p.setdefault("sot_90", round(p.get("threat_90", 0.0) * 0.4, 1))
+            p.setdefault("kp_90", p.get("creativity_90", 0.0))
+        bundle["shots_source"] = "fpl_proxy"
 
     bundle["errors"] = errors
     return bundle

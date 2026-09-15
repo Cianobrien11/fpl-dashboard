@@ -150,6 +150,32 @@ def scrape_h2h(max_players: int = 350) -> dict:
     return out
 
 
+def scrape_team_stats() -> dict:
+    """
+    Team-level xG / xGA / goals from Understat league team data.
+
+    Understat's get_team_data returns per-team, per-match history; we aggregate
+    the season totals so the app's rankings (attack/defence) stay fresh without
+    the app ever touching FBRef. Returns {canonical_team: {xg,xga,gf,ga,mp}}.
+    """
+    from understatapi import UnderstatClient
+    out = {}
+    with UnderstatClient() as understat:
+        team_data = understat.league(league="EPL").get_team_data(season=SEASON)
+    # team_data is keyed by team id -> {title, history:[per-match dicts]}
+    for _tid, td in (team_data or {}).items():
+        title = (td.get("title") or "").strip()
+        name = UNDERSTAT_TEAM.get(title, title)
+        hist = td.get("history", []) or []
+        xg = sum(_f(h.get("xG")) for h in hist)
+        xga = sum(_f(h.get("xGA")) for h in hist)
+        gf = sum(int(_f(h.get("scored"))) for h in hist)
+        ga = sum(int(_f(h.get("missed"))) for h in hist)
+        out[name] = {"xg": round(xg, 2), "xga": round(xga, 2),
+                     "gf": gf, "ga": ga, "mp": len(hist)}
+    return out
+
+
 def main() -> int:
     app_url = os.environ.get("APP_URL", "").rstrip("/")
     token = os.environ.get("CRON_TOKEN", "")
@@ -175,6 +201,18 @@ def main() -> int:
                          json={"players": data}, timeout=60)
     print("POST /ingest/shots ->", resp.status_code, resp.text[:300])
     resp.raise_for_status()
+
+    # --- team-level xG/xGA (keeps app rankings fresh; app never scrapes these)
+    try:
+        tstats = scrape_team_stats()
+        print(f"Scraped team stats for {len(tstats)} teams")
+        if len(tstats) >= 15:
+            rt = requests.post(f"{app_url}/ingest/team-stats",
+                               params={"token": token},
+                               json={"team_stats": tstats}, timeout=60)
+            print("POST /ingest/team-stats ->", rt.status_code, rt.text[:200])
+    except Exception as exc:  # noqa: BLE001
+        print(f"Team-stats scrape skipped: {exc}", file=sys.stderr)
 
     # --- all-time head-to-head records (best-effort; failure won't fail the job)
     try:

@@ -468,6 +468,26 @@ def ingest_h2h():
     return jsonify({"status": "ok", "received": len(incoming)})
 
 
+@app.route("/ingest/team-stats", methods=["POST"])
+def ingest_team_stats():
+    """
+    Receive team-level xG/xGA/goals from the GitHub Action (Understat source).
+
+    Body: {"team_stats": {team_name: {xg, xga, gf, ga, mp}}}
+    Merges over the stored team_stats so the app's rankings stay fresh without
+    the app ever scraping FBRef (which crashes the free-tier worker).
+    """
+    expected = os.environ.get("CRON_TOKEN", "")
+    if not expected or request.args.get("token") != expected:
+        abort(403)
+    payload = request.get_json(silent=True) or {}
+    incoming = payload.get("team_stats") or {}
+    if len(incoming) < 15:
+        return jsonify({"status": "error", "reason": "too few teams"}), 400
+    snap = _ensure_data()
+    snap.setdefault("team_stats", {}).update(incoming)
+    models.save_snapshot(snap)
+    return jsonify({"status": "ok", "received": len(incoming)})
 @app.template_filter("dcls")
 def difficulty_class(d: int) -> str:
     return {0: "fx-g", 1: "fx-y", 2: "fx-r"}.get(d, "fx-y")
