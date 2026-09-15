@@ -1,11 +1,16 @@
 name: Daily Data Refresh
 
 # Daily refresh of the FPL dashboard.
-#  1. Trigger the app's own refresh (FPL API stats, fixtures, prices).
-#  2. Pull REAL shots/key-passes from Understat (via understatapi) on GitHub's
-#     runners — Understat serves the full data page to GitHub but not to a
-#     cloud host like Render — and POST the numbers to /ingest/shots.
+#  1. Wake + trigger the app's own refresh (FPL API stats, fixtures, prices).
+#  2. Pull REAL shots/key-passes, team xG/xGA and H2H from Understat (via
+#     understatapi) on GitHub's runners — Understat serves the full data page
+#     to GitHub but not to a cloud host like Render — and POST via /ingest/*.
 # Runs every day at 07:00 UTC — plus a manual "Run workflow" trigger.
+#
+# Resilience: the app on Render's free tier SLEEPS after 15 min idle and can
+# take ~50s to wake, returning errors on the first hit. So we (a) ping to wake
+# it, (b) retry the refresh, and (c) mark steps `continue-on-error` so a
+# transient refresh hiccup never blocks the all-important Understat ingest.
 on:
   schedule:
     - cron: "0 7 * * *"   # 07:00 UTC every day
@@ -18,15 +23,29 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
 
-      - name: Trigger the app refresh (FPL stats + fixtures)
+      - name: Wake the app (free tier spins down when idle)
+        continue-on-error: true
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          echo "Pinging app to wake it..."
+          curl -s --max-time 90 "$APP_URL/" -o /dev/null || true
+          sleep 5
+
+      - name: Trigger the app refresh (FPL stats + fixtures), with retries
+        continue-on-error: true
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
         run: |
-          echo "Calling app refresh endpoint..."
-          curl --fail-with-body --max-time 180 \
-               "$APP_URL/cron/refresh?token=[REDACTED_PARAM]
-          echo ""
+          for i in 1 2 3; do
+            echo "Refresh attempt $i..."
+            code=$(curl -s -o /tmp/resp.txt -w "%{http_code}" --max-time 120 \
+                   "$APP_URL/cron/refresh?token=[REDACTED_PARAM]
+            echo "HTTP $code"; cat /tmp/resp.txt; echo ""
+            if [ "$code" = "200" ]; then echo "Refresh OK"; break; fi
+            echo "Retrying in 20s..."; sleep 20
+          done
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,7 +55,7 @@ jobs:
       - name: Install scraper dependencies
         run: pip install requests understatapi
 
-      - name: Pull real shots from Understat and post to the app
+      - name: Pull Understat data (shots, team xG/xGA, H2H) and post to the app
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
