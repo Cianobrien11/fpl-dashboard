@@ -17,7 +17,7 @@ import json
 import os
 
 from flask import (Flask, abort, jsonify, redirect, render_template, request,
-                   url_for)
+                   send_from_directory, url_for)
 
 import analytics
 import models
@@ -44,6 +44,23 @@ def _ensure_data() -> dict:
         models.save_squad(seed["squad"])
         snap = models.load_snapshot()
     return snap
+
+
+@app.route("/service-worker.js")
+def service_worker():
+    """Serve the service worker from the root scope so it can control all pages.
+    (A SW only controls URLs at or below its own path, so it cannot live
+    under /static/.)"""
+    resp = send_from_directory(os.path.join(BASE, "static"), "service-worker.js")
+    resp.headers["Content-Type"] = "application/javascript"
+    resp.headers["Service-Worker-Allowed"] = "/"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/offline")
+def offline():
+    return send_from_directory(os.path.join(BASE, "static"), "offline.html")
 
 
 @app.route("/")
