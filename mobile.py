@@ -413,3 +413,55 @@ def analytics_payload(snap, players=None):
             {"key": "accuracy", "title": "Accuracy", "desc": "How our predictions have scored vs real results.", "icon": "A"},
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# ANALYTICS SUB-PAGES — one assembler per section, selected by key.
+# ---------------------------------------------------------------------------
+ANALYTICS_SECTIONS = {
+    "captaincy": "Captaincy", "differentials": "Differentials",
+    "radar": "Team Radar", "h2h": "Head to Head",
+    "setpieces": "Set Pieces", "accuracy": "Accuracy",
+}
+
+
+def analytics_sub_payload(section, snap, players=None, logs=None):
+    """Build the payload for a single analytics sub-page.
+
+    Returns {section, title, has_live, gw, kind, data, note}.
+    `kind` tells the template which block to render.
+    """
+    players = players or snap.get("players", []) or []
+    fixtures = snap.get("fixtures", {})
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    gw = snap.get("next_gw") or snap.get("current_gw") or 1
+    has_live = len(players) > 0
+
+    out = {"section": section, "title": ANALYTICS_SECTIONS.get(section, "Analytics"),
+           "has_live": has_live, "gw": gw, "kind": section, "data": None, "note": None}
+
+    try:
+        if section == "captaincy":
+            out["data"] = analytics.captaincy_board(players, rankings, fixtures, gw, limit=15) if has_live else []
+        elif section == "differentials":
+            out["data"] = analytics.differentials(players, rankings, fixtures, gw, max_own=10.0, limit=15) if has_live else []
+        elif section == "radar":
+            # Radar needs team stats only (works from seed)
+            out["data"] = analytics.team_radar(rankings, snap.get("team_strength"))
+            out["has_live"] = bool(snap.get("team_stats"))
+        elif section == "h2h":
+            h2h = snap.get("h2h") or {}
+            out["data"] = analytics.h2h_vs_next_opponent(players, h2h, fixtures, rankings, gw) if (players and h2h) else []
+            out["note"] = None if h2h else "Head-to-head history loads from the daily data pipeline (Understat). It will populate after the next refresh."
+        elif section == "setpieces":
+            out["data"] = analytics.set_piece_takers(players) if has_live else {}
+        elif section == "accuracy":
+            results = snap.get("results", {})
+            out["data"] = analytics.score_predictions(logs or [], results)
+            out["note"] = None if (logs and results) else "Accuracy builds up over time as we log each gameweek's predictions and compare them to real results."
+        else:
+            out["note"] = "Unknown section."
+    except Exception as e:
+        out["note"] = f"Could not load {section}: {e}"
+        out["data"] = [] if section not in ("setpieces", "accuracy") else ({} if section == "setpieces" else {"per_gw": [], "overall": {}})
+    return out

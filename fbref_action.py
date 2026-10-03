@@ -169,10 +169,40 @@ def scrape_team_stats() -> dict:
         hist = td.get("history", []) or []
         xg = sum(_f(h.get("xG")) for h in hist)
         xga = sum(_f(h.get("xGA")) for h in hist)
+        npxg = sum(_f(h.get("npxG")) for h in hist)
+        npxga = sum(_f(h.get("npxGA")) for h in hist)
         gf = sum(int(_f(h.get("scored"))) for h in hist)
         ga = sum(int(_f(h.get("missed"))) for h in hist)
-        out[name] = {"xg": round(xg, 2), "xga": round(xga, 2),
-                     "gf": gf, "ga": ga, "mp": len(hist)}
+        deep = sum(_f(h.get("deep")) for h in hist)
+        deep_allowed = sum(_f(h.get("deep_allowed")) for h in hist)
+        # PPDA (pressing) is a rate — average it rather than sum.
+        ppda_vals = [_f(h.get("ppda_coef") if isinstance(h.get("ppda"), dict) is False else None)
+                     for h in hist]
+        # Understat nests ppda as {"att":.., "def":..}; derive the coefficient.
+        def _ppda(h):
+            v = h.get("ppda")
+            if isinstance(v, dict):
+                att = _f(v.get("att")); dfn = _f(v.get("def"))
+                return (att / dfn) if dfn else 0.0
+            return _f(v)
+        ppdas = [_ppda(h) for h in hist if h.get("ppda") is not None]
+        ppda = round(sum(ppdas) / len(ppdas), 2) if ppdas else 0.0
+
+        # Keep a slim per-match history for recent-form weighting in the model.
+        slim_hist = [{
+            "xG": round(_f(h.get("xG")), 3), "xGA": round(_f(h.get("xGA")), 3),
+            "npxG": round(_f(h.get("npxG")), 3), "npxGA": round(_f(h.get("npxGA")), 3),
+            "scored": int(_f(h.get("scored"))), "missed": int(_f(h.get("missed"))),
+            "deep": _f(h.get("deep")), "deep_allowed": _f(h.get("deep_allowed")),
+        } for h in hist]
+
+        out[name] = {
+            "xg": round(xg, 2), "xga": round(xga, 2),
+            "npxg": round(npxg, 2), "npxga": round(npxga, 2),
+            "gf": gf, "ga": ga, "mp": len(hist),
+            "deep": round(deep, 1), "deep_allowed": round(deep_allowed, 1),
+            "ppda": ppda, "history": slim_hist,
+        }
     return out
 
 

@@ -27,7 +27,7 @@
 
 {% if captaincy %}
 <div class="preview">
-  <h3>Captaincy <span class="tag">GW{{ gw }}</span></h3>
+  <a href="{{ url_for('m_analytics_sub', section='captaincy') }}" style="color:inherit"><h3>Captaincy <span class="tag">View all →</span></h3></a>
   {% for c in captaincy %}
   <div class="mini">
     <div class="rk">{{ loop.index }}</div>
@@ -40,7 +40,7 @@
 
 {% if differentials %}
 <div class="preview">
-  <h3>Differentials <span class="tag">&lt;10% owned</span></h3>
+  <a href="{{ url_for('m_analytics_sub', section='differentials') }}" style="color:inherit"><h3>Differentials <span class="tag">View all →</span></h3></a>
   {% for d in differentials %}
   <div class="mini">
     <div class="rk">{{ loop.index }}</div>
@@ -54,11 +54,11 @@
 <div class="sec-label">Explore</div>
 <div class="grid">
   {% for s in sections %}
-  <div class="acard">
+  <a class="acard" href="{{ url_for('m_analytics_sub', section=s.key) }}">
     <div class="ic">{{ s.icon }}</div>
     <div class="t">{{ s.title }}</div>
     <div class="d">{{ s.desc }}</div>
-  </div>
+  </a>
   {% endfor %}
 </div>
 

@@ -37,83 +37,199 @@ def _games_played(stats: dict) -> int:
     return max(stats.get("mp", 3) or 3, 1)
 
 
+def _rank_scale(values, reverse=False):
+    """Return a dict mapping index->0..100 score by rank within `values`.
+    reverse=True means higher raw value = higher score."""
+    n = len(values)
+    if n <= 1:
+        return {0: 50.0}
+    order = sorted(range(n), key=lambda i: values[i], reverse=reverse)
+    out = {}
+    for rank, idx in enumerate(order):
+        out[idx] = round(100.0 * (n - 1 - rank) / (n - 1), 1)
+    return out
+
+
+def _recent_weight(history, key, n_recent=5, recent_w=2.0):
+    """Weighted per-match average of `key` over a team's match history,
+    weighting the most recent `n_recent` games `recent_w`x. Falls back to a
+    simple mean when history is short. Returns None if no usable data."""
+    if not history:
+        return None
+    vals = []
+    for h in history:
+        v = h.get(key)
+        if v is None:
+            continue
+        try:
+            vals.append(float(v))
+        except (TypeError, ValueError):
+            continue
+    if not vals:
+        return None
+    weights = []
+    m = len(vals)
+    for i in range(m):
+        weights.append(recent_w if i >= m - n_recent else 1.0)
+    num = sum(v * w for v, w in zip(vals, weights))
+    den = sum(weights) or 1.0
+    return num / den
+
+
 def compute_rankings(team_stats: dict[str, dict],
                      strength: dict | None = None) -> dict[str, dict]:
     """
-    Return {team: {cs_rk, gs_rk, gc_rk, xg, xga, gf, ga, ...}}.
+    Build a per-team rating set powering attack/defence, difficulty and xPts.
 
-    cs_rk  1 = best defence (back for clean sheet)
-    gs_rk  1 = best attack (back to score)
-    gc_rk  1 = worst defence (target to score against)
+    For each team we derive PER-GAME rates (using real matches played) and a
+    0-100 ATTACK and DEFENCE rating from a weighted composite of every factor
+    the data pipeline supplies, degrading gracefully when a factor is absent:
+
+      Attack  <- npxG/90 (or xG), shots/90, SoT/90, deep/90, goals/90
+      Defence <- npxGA/90 (or xGA), shots faced/90, SoT against/90,
+                 deep allowed/90, goals against/90   (lower = better)
+
+    When per-match `history` is present we weight the most recent games more
+    heavily (recent form). Season totals (xg/xga/gf/ga) are preserved so the
+    existing xPts multiplier helpers keep working.
+
+    Ranks returned:
+      cs_rk  1 = best defence (back for clean sheet)
+      gs_rk  1 = best attack  (back to score)
+      gc_rk  1 = worst defence (best target to score against)
     """
     rows = []
     for team in CANONICAL_TEAMS:
         s = team_stats.get(team, {})
         st = (strength or {}).get(team, {})
+        mp = max(int(s.get("mp", 0) or 0), 0)
+        gp = mp if mp > 0 else 3  # avoid div-by-zero; seed assumes ~3 games
+        hist = s.get("history") or []
+
+        def pg(key_total, key_recent=None):
+            """Per-game rate, form-weighted if history has the per-match key."""
+            if hist and key_recent:
+                rw = _recent_weight(hist, key_recent)
+                if rw is not None:
+                    return rw
+            return (float(s.get(key_total, 0) or 0)) / gp
+
+        # Attacking per-game factors (prefer non-penalty xG when present)
+        npxg = s.get("npxg")
+        xg_pg = pg("npxg", "npxG") if npxg is not None else pg("xg", "xG")
+        gf_pg = pg("gf", "scored")
+        sh_pg = pg("sh")
+        sot_pg = pg("sot")
+        deep_pg = pg("deep", "deep")
+
+        # Defensive per-game factors (lower = better)
+        npxga = s.get("npxga")
+        xga_pg = pg("npxga", "npxGA") if npxga is not None else pg("xga", "xGA")
+        ga_pg = pg("ga", "missed")
+        shag_pg = pg("sh_ag")
+        sotag_pg = pg("sot_ag")
+        deepag_pg = pg("deep_allowed", "deep_allowed")
+        ppda = float(s.get("ppda", 0) or 0)
+
         rows.append({
             "team": team,
-            "ov_home": st.get("ov_home"),
-            "ov_away": st.get("ov_away"),
+            "ov_home": st.get("ov_home"), "ov_away": st.get("ov_away"),
             "form": st.get("form", 0),
-            "xg": float(s.get("xg", 0) or 0),
-            "xga": float(s.get("xga", 0) or 0),
-            "gf": int(s.get("gf", 0) or 0),
-            "ga": int(s.get("ga", 0) or 0),
-            "sh": int(s.get("sh", 0) or 0),
-            "sot": int(s.get("sot", 0) or 0),
-            "sh_ag": int(s.get("sh_ag", 0) or 0),
-            "sot_ag": int(s.get("sot_ag", 0) or 0),
+            # season totals (kept for xPts helpers / display)
+            "xg": float(s.get("xg", 0) or 0), "xga": float(s.get("xga", 0) or 0),
+            "gf": int(s.get("gf", 0) or 0), "ga": int(s.get("ga", 0) or 0),
+            "sh": int(s.get("sh", 0) or 0), "sot": int(s.get("sot", 0) or 0),
+            "sh_ag": int(s.get("sh_ag", 0) or 0), "sot_ag": int(s.get("sot_ag", 0) or 0),
+            "mp": mp,
+            # per-game rates
+            "xg_pg": round(xg_pg, 2), "xga_pg": round(xga_pg, 2),
+            "gf_pg": round(gf_pg, 2), "ga_pg": round(ga_pg, 2),
+            "sh_pg": round(sh_pg, 2), "sot_pg": round(sot_pg, 2),
+            "sh_ag_pg": round(shag_pg, 2), "sot_ag_pg": round(sotag_pg, 2),
+            "deep_pg": round(deep_pg, 2), "deep_ag_pg": round(deepag_pg, 2),
+            "ppda": round(ppda, 2),
         })
 
-    # Clean-sheet quality: low xGA, low GA, few SoT faced
-    cs = sorted(rows, key=lambda r: (r["xga"] * 2 + r["ga"] * 1.5 + r["sot_ag"] * 0.2))
-    for i, r in enumerate(cs):
-        r["cs_rk"] = i + 1
-    # Attack quality: high xG, high GF, high SoT
-    gs = sorted(rows, key=lambda r: -(r["xg"] * 2 + r["gf"] * 1.5 + r["sot"] * 0.15))
-    for i, r in enumerate(gs):
-        r["gs_rk"] = i + 1
-    # Conceding (worst defence first = best target)
-    gc = sorted(rows, key=lambda r: -(r["xga"] * 2 + r["ga"] * 1.5 + r["sot_ag"] * 0.2))
-    for i, r in enumerate(gc):
-        r["gc_rk"] = i + 1
+    n = len(rows)
+    # Composite ATTACK: weight each factor; factors with no data contribute 0
+    # weight (so teams aren't penalised for a missing stat).
+    att_factors = [("xg_pg", 0.40), ("sot_pg", 0.20), ("gf_pg", 0.18),
+                   ("sh_pg", 0.12), ("deep_pg", 0.10)]
+    def_factors = [("xga_pg", 0.40), ("sot_ag_pg", 0.20), ("ga_pg", 0.18),
+                   ("sh_ag_pg", 0.12), ("deep_ag_pg", 0.10)]
+
+    def composite(factors, reverse):
+        # Returns list of 0-100 scores per row. reverse=True: higher raw=better.
+        active = [(k, w) for k, w in factors if any(r[k] for r in rows)]
+        if not active:
+            return [50.0] * n
+        tw = sum(w for _, w in active)
+        scores = [0.0] * n
+        for k, w in active:
+            vals = [r[k] for r in rows]
+            scaled = _rank_scale(vals, reverse=reverse)
+            for i in range(n):
+                scores[i] += (scaled[i] * w / tw)
+        return [round(x, 1) for x in scores]
+
+    attack = composite(att_factors, reverse=True)   # more xG/shots = stronger
+    defence = composite(def_factors, reverse=False)  # less xGA/shots = stronger
+    for i, r in enumerate(rows):
+        r["attack"] = attack[i]
+        r["defence"] = defence[i]
+
+    # Ranks derived from the composite ratings (stronger, multi-factor)
+    cs = sorted(range(n), key=lambda i: -rows[i]["defence"])   # best defence first
+    for rank, i in enumerate(cs):
+        rows[i]["cs_rk"] = rank + 1
+    gs = sorted(range(n), key=lambda i: -rows[i]["attack"])    # best attack first
+    for rank, i in enumerate(gs):
+        rows[i]["gs_rk"] = rank + 1
+    gc = sorted(range(n), key=lambda i: rows[i]["defence"])    # worst defence first
+    for rank, i in enumerate(gc):
+        rows[i]["gc_rk"] = rank + 1
 
     return {r["team"]: r for r in rows}
 
 
+
 def _difficulty(cat: str, opp_ranks: dict, venue: str) -> int:
     """
-    Return 0 (easy), 1 (medium), 2 (hard) for a fixture in a category.
+    Return 0 (easy), 1 (medium), 2 (hard) for a fixture in a category,
+    driven by the opponent's CONTINUOUS 0-100 attack/defence ratings plus a
+    venue tilt and a current-form nudge.
 
-    Base tier comes from the opponent's season xG/xGA rank. When FPL team
-    strength data is available it is blended in as a FORM signal: a nudge that
-    can shift a borderline fixture one tier easier/harder based on the
-    opponent's *current* strength (FPL updates these ratings on recent form).
+      cs  (we want a clean sheet)  -> easier vs a WEAK attack (low opp attack)
+      gs  (we want to score)       -> easier vs a LEAKY defence (low opp defence)
+      gc  (we're likely to concede)-> easier target vs a STRONG attack
+
+    Thresholds are on the 0-100 scale; venue shifts the effective rating by
+    ~8 points (opponent is tougher at their home).
     """
-    if cat == "cs":  # want weak-attacking opponent → high gs_rk
-        v = opp_ranks["gs_rk"]
-        base = 0 if (v >= 15 or (v >= 12 and venue == "H")) else \
-               (2 if (v <= 5 or (v <= 8 and venue == "A")) else 1)
-    elif cat == "gs":  # want leaky opponent → low gc_rk
-        v = opp_ranks["gc_rk"]
-        base = 0 if (v <= 6 or (v <= 9 and venue == "H")) else \
-               (2 if (v >= 15 or (v >= 12 and venue == "A")) else 1)
-    else:  # cat == "gc": likely to concede vs strong attacker → low gs_rk
-        v = opp_ranks["gs_rk"]
-        base = 0 if (v <= 5 or (v <= 8 and venue == "A")) else \
-               (2 if (v >= 15 or (v >= 12 and venue == "H")) else 1)
+    if cat == "cs":
+        opp = opp_ranks.get("attack", 50.0)
+        # opponent plays opposite venue: if WE are home, they're away (weaker)
+        eff = opp - (8 if venue == "H" else -8)
+        base = 0 if eff <= 38 else (2 if eff >= 68 else 1)
+    elif cat == "gs":
+        opp = opp_ranks.get("defence", 50.0)
+        eff = opp - (8 if venue == "H" else -8)
+        base = 0 if eff <= 38 else (2 if eff >= 68 else 1)
+    else:  # gc
+        opp = opp_ranks.get("attack", 50.0)
+        eff = opp + (8 if venue == "A" else -8)  # their strong attack at their home = we concede
+        base = 0 if eff >= 68 else (2 if eff <= 38 else 1)
 
-    # Form blend: opponent's current overall strength (FPL updates on form).
-    # opp_ranks may carry "ov_home"/"ov_away" (1-5). The opponent plays the
-    # OPPOSITE venue to us. Only nudge borderline (tier 1) fixtures.
+    # Current-form nudge from FPL overall strength on borderline fixtures.
     oh, oa = opp_ranks.get("ov_home"), opp_ranks.get("ov_away")
     if base == 1 and oh is not None and oa is not None:
         opp_str = oa if venue == "H" else oh
         if opp_str <= 2:
-            base = 0
+            base = 0 if cat in ("cs", "gs") else 2
         elif opp_str >= 5:
-            base = 2
+            base = 2 if cat in ("cs", "gs") else 0
     return base
+
 
 
 def build_target_tables(rankings: dict, fixtures: dict, gw_from: int,

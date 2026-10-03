@@ -263,6 +263,22 @@ def m_analytics():
     return render_template("m_analytics.html", tab="analytics", **data)
 
 
+@app.route("/app/analytics/<section>")
+def m_analytics_sub(section):
+    snap = _ensure_data()
+    players = _players(snap)
+    logs = []
+    if section == "accuracy":
+        try:
+            logs = models.load_prediction_logs()
+        except Exception:
+            logs = []
+    if section not in mobile.ANALYTICS_SECTIONS:
+        abort(404)
+    data = mobile.analytics_sub_payload(section, snap, players=players, logs=logs)
+    return render_template("m_analytics_sub.html", tab="analytics", **data)
+
+
 @app.route("/players")
 def players_page():
     snap = _ensure_data()
@@ -567,9 +583,12 @@ def ingest_team_stats():
     """
     Receive team-level xG/xGA/goals from the GitHub Action (Understat source).
 
-    Body: {"team_stats": {team_name: {xg, xga, gf, ga, mp}}}
+    Body: {"team_stats": {team_name: {xg, xga, npxg, npxga, gf, ga, mp,
+                                      deep, deep_allowed, ppda, history[]}}}
     Merges over the stored team_stats so the app's rankings stay fresh without
-    the app ever scraping FBRef (which crashes the free-tier worker).
+    the app ever scraping FBRef (which crashes the free-tier worker). The
+    richer fields (npxG, deep completions, PPDA, per-match history) power the
+    multi-factor, form-weighted attack/defence model in analytics.py.
     """
     expected = os.environ.get("CRON_TOKEN", "")
     if not expected or request.args.get("token") != expected:

@@ -1,0 +1,161 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — {{ title }}{% endblock %}
+{% block content %}
+<style>
+  .backbar{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+  .backbar a{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--muted)}
+  .backbar a svg{width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:2.5}
+  .backbar .ttl{font-size:18px;font-weight:900;margin-left:2px}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 12px;margin-bottom:12px}
+  .note{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:13px;font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:12px}
+
+  .row{display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--border)}
+  .row:last-child{border-bottom:none}
+  .rk{width:20px;font-weight:900;color:var(--muted);font-size:13px;font-family:monospace}
+  .nm{font-size:14px;font-weight:800}.tm{font-size:11px;color:var(--muted);margin-top:1px}
+  .pos{font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;color:#fff;margin-right:5px}
+  .pGK{background:#b45309}.pDEF{background:#2b6cb0}.pMID{background:#15803d}.pFWD{background:#9d174d}
+  .val{margin-left:auto;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;font-size:15px}
+  .val .k{display:block;font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase}
+
+  /* radar bars */
+  .radar-row{padding:11px 2px;border-bottom:1px solid var(--border)}
+  .radar-row:last-child{border-bottom:none}
+  .radar-top{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  .radar-top .nm{font-size:14px;font-weight:800}
+  .radar-top .xg{margin-left:auto;font-size:10px;color:var(--muted);font-family:monospace}
+  .meter{display:flex;align-items:center;gap:8px;margin:4px 0}
+  .meter .lab{width:52px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .meter .track{flex:1;height:7px;background:var(--bg);border-radius:4px;overflow:hidden}
+  .meter .fill{height:100%;border-radius:4px}
+  .fill.att{background:linear-gradient(90deg,#9d174d,#f0569f)}
+  .fill.def{background:linear-gradient(90deg,#15803d,var(--accent))}
+  .meter .v{width:28px;text-align:right;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums}
+
+  /* set pieces */
+  .sp-team{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:12px 14px;margin-bottom:10px}
+  .sp-team h4{font-size:13px;font-weight:800;margin-bottom:8px}
+  .sp-line{display:flex;gap:8px;font-size:12px;padding:4px 0}
+  .sp-line .tag{width:62px;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;flex:none}
+  .sp-line .who{font-weight:700}
+
+  /* accuracy */
+  .acc-top{display:flex;gap:10px;margin-bottom:12px}
+  .acc-stat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px;text-align:center}
+  .acc-stat .v{font-size:26px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
+  .acc-stat .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+  table.acc{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.acc th{text-align:left;color:var(--muted);font-size:9.5px;text-transform:uppercase;padding:7px 6px;border-bottom:1px solid var(--border)}
+  table.acc td{padding:8px 6px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
+  .empty{font-size:12.5px;color:var(--muted);line-height:1.55;text-align:center;padding:26px 12px}
+</style>
+
+<div class="backbar">
+  <a href="{{ url_for('m_analytics') }}"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Analytics</a>
+  <span class="ttl">{{ title }}</span>
+</div>
+
+{% if note %}<div class="note">{{ note }}</div>{% endif %}
+
+{# ---------- CAPTAINCY / DIFFERENTIALS (player xPts lists) ---------- #}
+{% if kind in ['captaincy','differentials'] %}
+  {% if data %}
+  <div class="card">
+    {% for p in data %}
+    <div class="row">
+      <div class="rk">{{ loop.index }}</div>
+      <div>
+        <div class="nm"><span class="pos p{{ p.position }}">{{ p.position }}</span>{{ p.name }}</div>
+        <div class="tm">{{ p.team }}{% if kind=='differentials' %} · {{ '%.1f'|format(p.selected_by|default(0)) }}% owned{% endif %}</div>
+      </div>
+      <div class="val">{{ '%.1f'|format(p.xpts) }}<span class="k">xPts</span></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% elif not has_live %}
+  <div class="empty">Load live player data first — tap “Refresh Data” on the <a href="/" style="color:var(--accent)">dashboard</a>.</div>
+  {% else %}
+  <div class="empty">No {{ title|lower }} to show right now.</div>
+  {% endif %}
+{% endif %}
+
+{# ---------- TEAM RADAR ---------- #}
+{% if kind == 'radar' %}
+  {% if data %}
+  <div class="card" style="padding:4px 14px">
+    {% for t in data %}
+    <div class="radar-row">
+      <div class="radar-top">
+        <div class="nm">{{ t.team }}</div>
+        <div class="xg">xG {{ '%.2f'|format(t.xg) }} · xGA {{ '%.2f'|format(t.xga) }}</div>
+      </div>
+      <div class="meter"><div class="lab">Attack</div><div class="track"><div class="fill att" style="width:{{ t.attack|default(0)|round(0,'floor') }}%"></div></div><div class="v">{{ t.attack|default(0)|round(0,'floor') }}</div></div>
+      <div class="meter"><div class="lab">Defence</div><div class="track"><div class="fill def" style="width:{{ t.defence|default(0)|round(0,'floor') }}%"></div></div><div class="v">{{ t.defence|default(0)|round(0,'floor') }}</div></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">No team data yet.</div>
+  {% endif %}
+{% endif %}
+
+{# ---------- SET PIECES ---------- #}
+{% if kind == 'setpieces' %}
+  {% if data %}
+    {% for team, e in data.items() %}
+    <div class="sp-team">
+      <h4>{{ team }}</h4>
+      {% if e.pens %}<div class="sp-line"><span class="tag">Pens</span><span class="who">{{ e.pens|join(', ') }}</span></div>{% endif %}
+      {% if e.freekicks %}<div class="sp-line"><span class="tag">Free-kicks</span><span class="who">{{ e.freekicks|join(', ') }}</span></div>{% endif %}
+      {% if e.corners %}<div class="sp-line"><span class="tag">Corners</span><span class="who">{{ e.corners|join(', ') }}</span></div>{% endif %}
+    </div>
+    {% endfor %}
+  {% elif not has_live %}
+  <div class="empty">Load live player data first — tap “Refresh Data” on the <a href="/" style="color:var(--accent)">dashboard</a>.</div>
+  {% else %}
+  <div class="empty">No set-piece data available.</div>
+  {% endif %}
+{% endif %}
+
+{# ---------- H2H ---------- #}
+{% if kind == 'h2h' %}
+  {% if data %}
+  <div class="card">
+    {% for p in data %}
+    <div class="row">
+      <div>
+        <div class="nm">{{ p.name }}</div>
+        <div class="tm">{{ p.team }} vs {{ p.opponent }} · {{ p.games }} games</div>
+      </div>
+      <div class="val">{{ p.goals }}<span class="k">goals</span></div>
+      <div class="val" style="color:var(--text)">{{ p.assists }}<span class="k">assists</span></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% elif not note %}
+  <div class="empty">No head-to-head returns found for your players' next fixtures.</div>
+  {% endif %}
+{% endif %}
+
+{# ---------- ACCURACY ---------- #}
+{% if kind == 'accuracy' %}
+  {% set rep = data %}
+  <div class="acc-top">
+    <div class="acc-stat"><div class="v">{{ rep.overall.outcome_pct|default(0) }}%</div><div class="k">Outcome correct</div></div>
+    <div class="acc-stat"><div class="v">{{ rep.overall.exact_pct|default(0) }}%</div><div class="k">Exact score</div></div>
+    <div class="acc-stat"><div class="v">{{ rep.overall.n|default(0) }}</div><div class="k">Predictions</div></div>
+  </div>
+  {% if rep.per_gw %}
+  <div class="card" style="padding:4px 12px">
+    <table class="acc">
+      <tr><th>GW</th><th>Preds</th><th>Outcome</th><th>Exact</th></tr>
+      {% for g in rep.per_gw %}
+      <tr><td>GW{{ g.gw }}</td><td>{{ g.n }}</td><td>{{ g.outcome_pct }}%</td><td>{{ g.exact_pct }}%</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+{% endif %}
+
+{% endblock %}
