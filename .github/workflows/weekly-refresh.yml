@@ -28,9 +28,14 @@ jobs:
         env:
           APP_URL: ${{ secrets.APP_URL }}
         run: |
-          echo "Pinging app to wake it..."
-          curl -s --max-time 90 "$APP_URL/" -o /dev/null || true
-          sleep 5
+          echo "Waking app (free tier can take ~50s to spin up)..."
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "$APP_URL/" || echo "000")
+            echo "Wake ping $i -> HTTP $code"
+            if [ "$code" = "200" ]; then echo "App is awake."; break; fi
+            echo "Not ready yet, waiting 15s..."; sleep 15
+          done
+          exit 0
 
       - name: Trigger the app refresh (FPL stats + fixtures), with retries
         continue-on-error: true
@@ -38,14 +43,21 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
         run: |
-          for i in 1 2 3; do
-            echo "Refresh attempt $i..."
+          ok=0
+          for i in 1 2 3 4 5; do
+            echo "Refresh attempt $i of 5..."
             code=$(curl -s -o /tmp/resp.txt -w "%{http_code}" --max-time 120 \
                    "$APP_URL/cron/refresh?token=[REDACTED_PARAM]
-            echo "HTTP $code"; cat /tmp/resp.txt; echo ""
-            if [ "$code" = "200" ]; then echo "Refresh OK"; break; fi
-            echo "Retrying in 20s..."; sleep 20
+            echo "HTTP $code"; cat /tmp/resp.txt 2>/dev/null; echo ""
+            if [ "$code" = "200" ]; then echo "Refresh OK"; ok=1; break; fi
+            echo "Not ready (HTTP $code), retrying in 20s..."; sleep 20
           done
+          if [ "$ok" = "1" ]; then
+            echo "::notice::App refresh succeeded."
+          else
+            echo "::warning::App refresh did not return 200 after 5 tries (likely slow cold start). Understat ingest will still run."
+          fi
+          exit 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
