@@ -35,8 +35,10 @@
   .fdr3{background:var(--mid-bg);color:var(--mid)}
   .fdr4,.fdr5{background:var(--hard-bg);color:var(--hard)}
 
-  .iqbar{display:flex;gap:3px;margin-top:10px;align-items:flex-end;height:40px}
-  .iqseg{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;justify-content:flex-end;height:100%}
+  .iqbar{display:flex;gap:4px;margin-top:10px;align-items:flex-end;height:58px}
+  .iqseg{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;justify-content:flex-end;height:100%}
+  .iqseg .val{font-size:10px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;line-height:1}
+  .iqseg .bartrack{width:100%;flex:1;display:flex;align-items:flex-end}
   .iqseg .bar{width:100%;background:linear-gradient(180deg,var(--accent),#1f8a5a);border-radius:3px;min-height:3px}
   .iqseg .lab{font-size:7.5px;color:var(--muted);text-transform:uppercase}
   .empty{font-size:12px;color:var(--muted);line-height:1.55;text-align:center;padding:28px 12px}
@@ -95,7 +97,11 @@
 
     <div class="iqbar">
       {% for lab,val in [('Form',p.iq_parts.form),('Fix',p.iq_parts.fixtures),('xPts',p.iq_parts.xpts),('Val',p.iq_parts.value),('Mins',p.iq_parts.minutes)] %}
-      <div class="iqseg"><div class="bar" style="height:{{ (val/10*100)|round(0,'floor') }}%"></div><div class="lab">{{ lab }}</div></div>
+      <div class="iqseg">
+        <div class="val">{{ '%.1f'|format(val) }}</div>
+        <div class="bartrack"><div class="bar" style="height:{{ (val/10*100)|round(0,'floor') }}%"></div></div>
+        <div class="lab">{{ lab }}</div>
+      </div>
       {% endfor %}
     </div>
   </div>
