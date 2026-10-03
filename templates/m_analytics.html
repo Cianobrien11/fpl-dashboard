@@ -1,0 +1,69 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Analytics{% endblock %}
+{% block content %}
+<style>
+  .preview{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+  .preview h3{font-size:13px;font-weight:800;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .preview h3 .tag{margin-left:auto;font-size:10px;font-weight:800;color:var(--accent)}
+  .mini{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+  .mini:last-child{border-bottom:none}
+  .mini .rk{width:18px;font-weight:900;color:var(--muted);font-size:12px;font-family:monospace}
+  .mini .nm{font-size:13px;font-weight:700}.mini .tm{font-size:10px;color:var(--muted)}
+  .mini .val{margin-left:auto;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
+  .mini .own{margin-left:auto;text-align:right}
+  .mini .own .v{font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
+  .mini .own .k{font-size:9px;color:var(--muted)}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .acard{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:15px 13px;display:flex;flex-direction:column;gap:7px}
+  .acard .ic{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--p1),var(--p2));
+    color:#fff;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center}
+  .acard .t{font-size:14px;font-weight:800}
+  .acard .d{font-size:11px;color:var(--muted);line-height:1.4}
+  .empty{font-size:11.5px;color:var(--muted);line-height:1.5;padding:4px 2px}
+</style>
+
+<div class="sec-label">Analytics</div>
+
+{% if captaincy %}
+<div class="preview">
+  <h3>Captaincy <span class="tag">GW{{ gw }}</span></h3>
+  {% for c in captaincy %}
+  <div class="mini">
+    <div class="rk">{{ loop.index }}</div>
+    <div><div class="nm">{{ c.name }}</div><div class="tm">{{ c.team }} · {{ c.position }}</div></div>
+    <div class="val">{{ '%.1f'|format(c.xpts) }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if differentials %}
+<div class="preview">
+  <h3>Differentials <span class="tag">&lt;10% owned</span></h3>
+  {% for d in differentials %}
+  <div class="mini">
+    <div class="rk">{{ loop.index }}</div>
+    <div><div class="nm">{{ d.name }}</div><div class="tm">{{ d.team }} · {{ d.position }}</div></div>
+    <div class="own"><div class="v">{{ '%.1f'|format(d.xpts) }}</div><div class="k">{{ '%.1f'|format(d.selected_by|default(0)) }}% own</div></div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="sec-label">Explore</div>
+<div class="grid">
+  {% for s in sections %}
+  <div class="acard">
+    <div class="ic">{{ s.icon }}</div>
+    <div class="t">{{ s.title }}</div>
+    <div class="d">{{ s.desc }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if not has_live %}
+<div class="empty" style="margin-top:12px">Live previews (captaincy, differentials) activate once player data is loaded. Open the <a href="/" style="color:var(--accent)">dashboard</a> and tap “Refresh Data”. The full desktop dashboard also has every one of these analytics in depth.</div>
+{% endif %}
+
+{% endblock %}

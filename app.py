@@ -202,52 +202,65 @@ def m_home():
 @app.route("/app/players")
 def m_players():
     snap = _ensure_data()
-    return render_template(
-        "m_stub.html", tab="players", gw=snap.get("next_gw"),
-        title="Players",
-        blurb="A searchable player database with xPts, form, ownership, price, "
-              "fixtures, value and your proprietary FPL IQ score.",
-        features=["Search & filter by position, team, price",
-                  "xPts, form & value scores", "Next-5 fixture ticker",
-                  "Underlying stats (xG, xA per 90)", "Add to watchlist"])
+    players = _players(snap)
+    data = mobile.players_payload(
+        snap, players,
+        position=request.args.get("position", "ALL"),
+        sort=request.args.get("sort", "points"),
+        search=request.args.get("q", "").strip(),
+        limit=40)
+    return render_template("m_players.html", tab="players", **data)
 
 
 @app.route("/app/planner")
 def m_planner():
     snap = _ensure_data()
-    return render_template(
-        "m_stub.html", tab="planner", gw=snap.get("next_gw"),
-        title="Planner",
-        blurb="Plan transfers across a gameweek range with projected points, "
-              "fixture difficulty and a side-by-side transfer simulator.",
-        features=["GW range selector (e.g. GW6 → GW11)",
-                  "Per-GW projected points", "Transfer simulator (compare A vs B)",
-                  "Team value tracking"])
+    players = _players(snap)
+    data = mobile.planner_payload(
+        snap, players,
+        gw_from=request.args.get("from"),
+        gw_to=request.args.get("to"),
+        sim_a=request.args.get("a", "").strip(),
+        sim_b=request.args.get("b", "").strip())
+    return render_template("m_planner.html", tab="planner", gw=snap.get("next_gw"), **data)
 
 
-@app.route("/app/team")
+@app.route("/app/team", methods=["GET", "POST"])
 def m_team():
     snap = _ensure_data()
-    return render_template(
-        "m_stub.html", tab="team", gw=snap.get("next_gw"),
-        title="My Team",
-        blurb="Import your FPL team to see your starting XI, bench, captain, "
-              "projected score and a full squad analysis.",
-        features=["Import by FPL team ID", "Starting XI & bench view",
-                  "Projected GW score", "Flagged players & bank",
-                  "“Analyse my team” insights"])
+    players = _players(snap)
+    imported = None
+    team_id = request.values.get("team_id", "").strip()
+
+    if request.method == "POST" and team_id:
+        try:
+            imported = scraper.import_fpl_team(int(team_id))
+        except ValueError:
+            imported = {"ok": False, "error": "Team ID must be a number."}
+        if imported and imported.get("ok"):
+            try:
+                slim = [{"name": m.get("name"), "team": m.get("team"),
+                         "position": m.get("position"), "price": m.get("price", 0),
+                         "element": m.get("element"),
+                         "is_captain": m.get("is_captain", False),
+                         "is_vice": m.get("is_vice", False),
+                         "is_bench": m.get("is_bench", False),
+                         "multiplier": m.get("multiplier", 1)}
+                        for m in imported.get("squad", [])]
+                models.save_squad(slim)
+            except Exception:
+                pass
+
+    data = mobile.team_payload(snap, imported=imported, players=players)
+    return render_template("m_team.html", tab="team", team_id=team_id, **data)
 
 
 @app.route("/app/analytics")
 def m_analytics():
     snap = _ensure_data()
-    return render_template(
-        "m_stub.html", tab="analytics", gw=snap.get("next_gw"),
-        title="Analytics",
-        blurb="The deep-dive hub: Team Radar, Head-to-Head records, the "
-              "captaincy model, differential finder, set-pieces and model accuracy.",
-        features=["Team Radar", "H2H vs next opponent", "Captaincy model",
-                  "Differential finder", "Set-piece takers", "Prediction accuracy"])
+    players = _players(snap)
+    data = mobile.analytics_payload(snap, players)
+    return render_template("m_analytics.html", tab="analytics", **data)
 
 
 @app.route("/players")

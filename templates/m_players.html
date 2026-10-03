@@ -1,0 +1,113 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Players{% endblock %}
+{% block content %}
+<style>
+  .search{display:flex;gap:8px;margin-bottom:10px}
+  .search input{flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);
+    border-radius:11px;padding:11px 14px;font-size:15px}
+  .search button{background:var(--accent);color:#06130d;border:none;border-radius:11px;padding:0 16px;font-weight:800}
+  .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:4px;-webkit-overflow-scrolling:touch}
+  .chip{white-space:nowrap;font-size:12px;font-weight:700;padding:7px 13px;border-radius:100px;
+    background:var(--surface);color:var(--muted);border:1px solid var(--border)}
+  .chip.on{background:var(--accent);color:#06130d;border-color:var(--accent)}
+  .sortbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:8px}
+  .sortbar .chip.on{background:var(--p2);color:#fff;border-color:var(--p2)}
+
+  .pcard{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px;margin-bottom:10px}
+  .ptop{display:flex;align-items:center;gap:11px}
+  .posbadge{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:900;color:#fff;flex:none}
+  .pos-GK{background:#b45309}.pos-DEF{background:#2b6cb0}.pos-MID{background:#15803d}.pos-FWD{background:#9d174d}
+  .pname{font-size:15px;font-weight:800}
+  .pteam{font-size:11px;color:var(--muted);margin-top:1px}
+  .iq{margin-left:auto;text-align:center}
+  .iq .v{font-size:20px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1}
+  .iq .k{font-size:8.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+
+  .pstats{display:flex;gap:4px;margin-top:11px}
+  .ps{flex:1;background:var(--bg);border-radius:8px;padding:6px 2px;text-align:center}
+  .ps .v{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+  .ps .k{font-size:8.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+
+  .fixrow{display:flex;gap:4px;margin-top:10px}
+  .fix{flex:1;text-align:center;font-size:10px;font-weight:700;padding:4px 2px;border-radius:6px}
+  .fdr1,.fdr2{background:var(--easy-bg);color:var(--easy)}
+  .fdr3{background:var(--mid-bg);color:var(--mid)}
+  .fdr4,.fdr5{background:var(--hard-bg);color:var(--hard)}
+
+  .iqbar{display:flex;gap:3px;margin-top:10px;align-items:flex-end;height:40px}
+  .iqseg{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;justify-content:flex-end;height:100%}
+  .iqseg .bar{width:100%;background:linear-gradient(180deg,var(--accent),#1f8a5a);border-radius:3px;min-height:3px}
+  .iqseg .lab{font-size:7.5px;color:var(--muted);text-transform:uppercase}
+  .empty{font-size:12px;color:var(--muted);line-height:1.55;text-align:center;padding:28px 12px}
+</style>
+
+<div class="sec-label">Players</div>
+
+<form method="get" action="{{ url_for('m_players') }}">
+  <div class="search">
+    <input type="text" name="q" value="{{ search }}" placeholder="Search a player…">
+    <button type="submit">Go</button>
+  </div>
+  <div class="chips">
+    {% for pos in positions %}
+    <a class="chip {{ 'on' if position==pos }}"
+       href="{{ url_for('m_players', q=search, sort=sort, position=pos) }}">{{ pos }}</a>
+    {% endfor %}
+  </div>
+  <div class="sortbar">
+    {% for key,label in sorts %}
+    <a class="chip {{ 'on' if sort==key }}"
+       href="{{ url_for('m_players', q=search, position=position, sort=key) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</form>
+
+{% if rows %}
+  {% for p in rows %}
+  <div class="pcard">
+    <div class="ptop">
+      <div class="posbadge pos-{{ p.position }}">{{ p.position }}</div>
+      <div>
+        <div class="pname">{{ p.name }}</div>
+        <div class="pteam">{{ p.team }} · £{{ '%.1f'|format(p.price) }}m</div>
+      </div>
+      <div class="iq">
+        <div class="v">{{ p.iq }}</div>
+        <div class="k">FPL IQ</div>
+      </div>
+    </div>
+
+    <div class="pstats">
+      <div class="ps"><div class="v" style="color:var(--accent)">{{ p.xpts }}</div><div class="k">xPts</div></div>
+      <div class="ps"><div class="v">{{ '%.1f'|format(p.form) }}</div><div class="k">Form</div></div>
+      <div class="ps"><div class="v">{{ '%.1f'|format(p.ppm) }}</div><div class="k">Value</div></div>
+      <div class="ps"><div class="v">{{ '%.1f'|format(p.ownership) }}%</div><div class="k">Owned</div></div>
+    </div>
+
+    {% if p.fixtures %}
+    <div class="fixrow">
+      {% for f in p.fixtures %}
+      <div class="fix fdr{{ f.fdr }}">{{ f.opp[:3]|upper }}<br>{{ f.venue }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="iqbar">
+      {% for lab,val in [('Form',p.iq_parts.form),('Fix',p.iq_parts.fixtures),('xPts',p.iq_parts.xpts),('Val',p.iq_parts.value),('Mins',p.iq_parts.minutes)] %}
+      <div class="iqseg"><div class="bar" style="height:{{ (val/10*100)|round(0,'floor') }}%"></div><div class="lab">{{ lab }}</div></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty">
+    {% if not has_live %}
+      No live player data yet. Open the <a href="/" style="color:var(--accent)">dashboard</a> and tap “Refresh Data” to load players.
+    {% else %}
+      No players match “{{ search }}”. Try a different search or filter.
+    {% endif %}
+  </div>
+{% endif %}
+
+{% endblock %}

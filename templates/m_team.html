@@ -1,0 +1,134 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — My Team{% endblock %}
+{% block content %}
+<style>
+  .import-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;margin-bottom:12px}
+  .import-card h3{font-size:14px;font-weight:800;margin-bottom:4px}
+  .import-card p{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:11px}
+  .import-row{display:flex;gap:8px}
+  .import-row input{flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);
+    border-radius:10px;padding:11px 13px;font-size:15px}
+  .import-row button{background:var(--accent);color:#06130d;border:none;border-radius:10px;
+    padding:0 18px;font-weight:800;font-size:14px}
+  .err{background:var(--hard-bg);color:var(--hard);padding:10px 13px;border-radius:10px;font-size:12.5px;margin-bottom:12px;line-height:1.45}
+
+  .teamhead{display:flex;align-items:center;gap:12px;margin-bottom:2px}
+  .teamhead .tn{font-size:17px;font-weight:800}
+  .teamhead .mgr{font-size:12px;color:var(--muted)}
+
+  .stats{display:flex;gap:10px;margin:12px 0}
+  .stat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:11px;text-align:center}
+  .stat .v{font-size:18px;font-weight:900;color:var(--text);font-variant-numeric:tabular-nums}
+  .stat .v.accent{color:var(--accent)}
+  .stat .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+
+  .pitch{background:
+      linear-gradient(0deg,rgba(0,0,0,.12),rgba(0,0,0,.12)),
+      repeating-linear-gradient(0deg,#0d3a24 0 44px,#0f4028 44px 88px);
+    border:1px solid var(--border);border-radius:16px;padding:16px 6px;margin-bottom:12px}
+  .prow{display:flex;justify-content:center;gap:7px;margin-bottom:14px;flex-wrap:wrap}
+  .prow:last-child{margin-bottom:0}
+  .player{position:relative;background:rgba(255,255,255,.96);color:#0b1a12;border-radius:9px;
+    width:70px;padding:6px 3px 5px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .player .pn{font-size:10.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .player .pmeta{font-size:8.5px;color:#5a6b60;margin-top:1px}
+  .player .pxp{font-size:11px;font-weight:900;color:#0b7a4a;margin-top:2px;font-variant-numeric:tabular-nums}
+  .player .arm{position:absolute;top:-7px;right:-6px;width:18px;height:18px;border-radius:50%;
+    font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;color:#fff;
+    box-shadow:0 1px 3px rgba(0,0,0,.4)}
+  .player .arm.c{background:var(--p2)}
+  .player .arm.v{background:#2b6cb0}
+
+  .bench-wrap{margin-top:6px}
+  .bench-label{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:4px 6px 8px}
+  .bench{display:flex;gap:7px;justify-content:center;flex-wrap:wrap}
+  .bench .player{background:rgba(255,255,255,.82)}
+
+  .analyse{display:block;width:100%;text-align:center;background:var(--surface2);color:var(--accent);
+    font-weight:800;font-size:14px;padding:13px;border-radius:12px;border:1px solid var(--border);margin-top:4px}
+  .seed-note{font-size:11px;color:var(--muted);text-align:center;margin:12px 0 2px;line-height:1.5}
+</style>
+
+<div class="sec-label">My Team</div>
+
+{% if error %}
+<div class="err">⚠️ {{ error }}</div>
+{% endif %}
+
+<!-- Import form -->
+<div class="import-card">
+  <h3>Import your FPL team</h3>
+  <p>Enter your FPL Team ID to load your real squad, captain and projected score. Find it in the FPL app under <b>Points</b> → the number in your team’s URL.</p>
+  <form method="post" action="{{ url_for('m_team') }}">
+    <div class="import-row">
+      <input type="number" name="team_id" inputmode="numeric" placeholder="e.g. 1234567"
+             value="{{ team_id or '' }}" required>
+      <button type="submit">Import</button>
+    </div>
+  </form>
+</div>
+
+{% if gk or defs or mids or fwds %}
+<!-- Team header + stats -->
+{% if imported %}
+<div class="teamhead">
+  <div>
+    <div class="tn">{{ team_name }}</div>
+    <div class="mgr">{{ manager }}{% if overall_rank %} · OR {{ '{:,}'.format(overall_rank) }}{% endif %}</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="stats">
+  <div class="stat">
+    <div class="v accent">{{ projected if projected is not none else '—' }}</div>
+    <div class="k">Projected</div>
+  </div>
+  {% if imported %}
+  <div class="stat"><div class="v">£{{ team_value }}m</div><div class="k">Team value</div></div>
+  <div class="stat"><div class="v">£{{ bank }}m</div><div class="k">Bank</div></div>
+  {% endif %}
+</div>
+
+<!-- Pitch -->
+<div class="pitch">
+  {% macro pcard(m) %}
+    <div class="player">
+      {% if m.is_captain %}<span class="arm c">C</span>{% elif m.is_vice %}<span class="arm v">V</span>{% endif %}
+      <div class="pn">{{ m.name }}</div>
+      <div class="pmeta">{{ m.team }}</div>
+      {% if m.xpts %}<div class="pxp">{{ '%.1f'|format(m.xpts) }}</div>{% endif %}
+    </div>
+  {% endmacro %}
+  <div class="prow">{% for m in gk %}{{ pcard(m) }}{% endfor %}</div>
+  <div class="prow">{% for m in defs %}{{ pcard(m) }}{% endfor %}</div>
+  <div class="prow">{% for m in mids %}{{ pcard(m) }}{% endfor %}</div>
+  <div class="prow">{% for m in fwds %}{{ pcard(m) }}{% endfor %}</div>
+</div>
+
+{% if bench %}
+<div class="bench-wrap">
+  <div class="bench-label">Bench</div>
+  <div class="bench">
+    {% for m in bench %}
+    <div class="player">
+      <div class="pn">{{ m.name }}</div>
+      <div class="pmeta">{{ m.team }}</div>
+      {% if m.xpts %}<div class="pxp">{{ '%.1f'|format(m.xpts) }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<a class="analyse" href="{{ url_for('m_analytics') }}">Analyse my team →</a>
+
+{% if not imported %}
+<div class="seed-note">Showing your saved squad. Import your FPL Team ID above to load your live team with captain, bench and bank.</div>
+{% endif %}
+{% if projected is none %}
+<div class="seed-note">Projected points activate once live player data is loaded — tap “Refresh Data” on the <a href="/" style="color:var(--accent)">dashboard</a>.</div>
+{% endif %}
+{% endif %}
+
+{% endblock %}

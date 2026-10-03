@@ -1,0 +1,122 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Planner{% endblock %}
+{% block content %}
+<style>
+  .range-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+  .range-card h3{font-size:13px;font-weight:800;margin-bottom:10px}
+  .range-row{display:flex;gap:10px;align-items:flex-end}
+  .range-row .fld{flex:1}
+  .range-row label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px}
+  .range-row select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:10px;font-size:14px}
+  .range-row button{background:var(--accent);color:#06130d;border:none;border-radius:9px;padding:11px 16px;font-weight:800;font-size:13px}
+
+  table.plan{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.plan th{text-align:left;color:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;padding:7px 6px;border-bottom:1px solid var(--border)}
+  table.plan td{padding:9px 6px;border-bottom:1px solid var(--border)}
+  table.plan tr:last-child td{border-bottom:none}
+  .pl-name{font-weight:800}.pl-team{font-size:10px;color:var(--muted)}
+  .pl-pos{font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;color:#fff}
+  .ppos-GK{background:#b45309}.ppos-DEF{background:#2b6cb0}.ppos-MID{background:#15803d}.ppos-FWD{background:#9d174d}
+  .pl-tot{font-weight:900;color:var(--accent);text-align:right;font-variant-numeric:tabular-nums}
+  .pl-avg{color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+
+  .sim-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+  .sim-card h3{font-size:13px;font-weight:800;margin-bottom:4px}
+  .sim-card p{font-size:11px;color:var(--muted);margin-bottom:11px;line-height:1.45}
+  .sim-inputs{display:flex;gap:8px;margin-bottom:10px}
+  .sim-inputs input{flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:9px;padding:10px;font-size:13px}
+  .sim-vs{display:flex;align-items:stretch;gap:10px;margin-top:4px}
+  .sim-side{flex:1;background:var(--bg);border-radius:11px;padding:12px;text-align:center}
+  .sim-side .nm{font-size:13px;font-weight:800}
+  .sim-side .tm{font-size:10px;color:var(--muted);margin-top:1px}
+  .sim-side .tot{font-size:24px;font-weight:900;margin-top:7px;font-variant-numeric:tabular-nums}
+  .sim-side.win .tot{color:var(--accent)}
+  .sim-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:58px}
+  .sim-mid .diff{font-size:15px;font-weight:900}
+  .sim-mid .diff.pos{color:var(--easy)}.sim-mid .diff.neg{color:var(--hard)}
+  .sim-mid .lbl{font-size:9px;color:var(--muted);margin-top:2px}
+  .empty{font-size:12px;color:var(--muted);line-height:1.55;text-align:center;padding:22px 12px}
+</style>
+
+<div class="sec-label">Planner</div>
+
+<form method="get" action="{{ url_for('m_planner') }}">
+<div class="range-card">
+  <h3>Gameweek range</h3>
+  <div class="range-row">
+    <div class="fld"><label>From</label>
+      <select name="from">
+        {% for g in range(next_gw, 39) %}<option value="{{ g }}" {{ 'selected' if g==gw_from }}>GW{{ g }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="fld"><label>To</label>
+      <select name="to">
+        {% for g in range(next_gw, 39) %}<option value="{{ g }}" {{ 'selected' if g==gw_to }}>GW{{ g }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit">Go</button>
+  </div>
+</div>
+</form>
+
+{% if targets %}
+<div class="sec-label">Projected points · GW{{ gw_from }}–{{ gw_to }}</div>
+<div class="range-card" style="padding:6px 10px">
+  <table class="plan">
+    <tr><th>Player</th><th style="text-align:right">Total</th><th style="text-align:right">Avg</th></tr>
+    {% for t in targets %}
+    <tr>
+      <td>
+        <span class="pl-pos ppos-{{ t.position }}">{{ t.position }}</span>
+        <span class="pl-name">{{ t.name }}</span>
+        <span class="pl-team">{{ t.team }}</span>
+      </td>
+      <td class="pl-tot">{{ t.total_xpts }}</td>
+      <td class="pl-avg">{{ t.avg_xpts }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<!-- Transfer simulator -->
+<div class="sec-label">Transfer simulator</div>
+<div class="sim-card">
+  <h3>Compare two players</h3>
+  <p>See who scores more projected points over GW{{ gw_from }}–{{ gw_to }}.</p>
+  <form method="get" action="{{ url_for('m_planner') }}">
+    <input type="hidden" name="from" value="{{ gw_from }}">
+    <input type="hidden" name="to" value="{{ gw_to }}">
+    <div class="sim-inputs">
+      <input type="text" name="a" value="{{ sim_a }}" placeholder="Player A (e.g. Palmer)">
+      <input type="text" name="b" value="{{ sim_b }}" placeholder="Player B (e.g. Saka)">
+    </div>
+    <button type="submit" class="btn-accent">Compare</button>
+  </form>
+
+  {% if sim %}
+  <div class="sim-vs">
+    <div class="sim-side {{ 'win' if sim.a and (not sim.b or sim.a.total_xpts >= sim.b.total_xpts) }}">
+      <div class="nm">{{ sim.a.name if sim.a else sim_a }}</div>
+      <div class="tm">{{ sim.a.team if sim.a else 'not found' }}</div>
+      <div class="tot">{{ sim.a.total_xpts if sim.a else '—' }}</div>
+    </div>
+    <div class="sim-mid">
+      <div class="diff {{ 'pos' if sim.diff>0 else 'neg' if sim.diff<0 else '' }}">
+        {{ '+' if sim.diff>0 }}{{ sim.diff }}</div>
+      <div class="lbl">B − A</div>
+    </div>
+    <div class="sim-side {{ 'win' if sim.b and (not sim.a or sim.b.total_xpts > sim.a.total_xpts) }}">
+      <div class="nm">{{ sim.b.name if sim.b else sim_b }}</div>
+      <div class="tm">{{ sim.b.team if sim.b else 'not found' }}</div>
+      <div class="tot">{{ sim.b.total_xpts if sim.b else '—' }}</div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% if not has_live %}
+<div class="empty">Projected points and the simulator activate once live player data is loaded. Open the <a href="/" style="color:var(--accent)">dashboard</a> and tap “Refresh Data”.</div>
+{% endif %}
+
+{% endblock %}

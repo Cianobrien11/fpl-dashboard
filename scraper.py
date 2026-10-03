@@ -107,6 +107,94 @@ def build_fixture_map(bootstrap: dict, fixtures: list[dict]) -> dict:
     return out
 
 
+def fetch_fpl_entry(team_id: int) -> dict:
+    """Fetch an FPL manager's top-level entry (name, overall rank, team value)."""
+    return _get(f"{FPL_BASE}/entry/{team_id}/").json()
+
+
+def fetch_current_event(bootstrap: dict) -> int:
+    """Return the current (or next) gameweek id from the bootstrap events."""
+    events = bootstrap.get("events", [])
+    for e in events:
+        if e.get("is_current"):
+            return e["id"]
+    for e in events:
+        if e.get("is_next"):
+            return e["id"]
+    return events[0]["id"] if events else 1
+
+
+def import_fpl_team(team_id: int, bootstrap: dict | None = None,
+                    gw: int | None = None) -> dict:
+    """Import a manager's squad for a gameweek from the public FPL API.
+
+    Returns a dict:
+      {
+        "ok": bool, "error": str|None,
+        "manager": str, "team_name": str, "overall_rank": int|None,
+        "bank": float, "team_value": float, "gw": int,
+        "squad": [ {name, team, position, price, element,
+                    is_captain, is_vice, is_bench, multiplier, slot} ]
+      }
+    Squad members are enriched with full stat fields (form, xGI, minutes, …)
+    by matching the pick element ids to build_player_prices().
+    """
+    try:
+        if bootstrap is None:
+            bootstrap = fetch_fpl_bootstrap()
+        if gw is None:
+            gw = fetch_current_event(bootstrap)
+
+        # Rich player records keyed by FPL element id
+        rich = {p["id"]: p for p in build_player_prices(bootstrap)}
+
+        picks_url = f"{FPL_BASE}/entry/{team_id}/event/{gw}/picks/"
+        picks_data = _get(picks_url).json()
+
+        picks = picks_data.get("picks", [])
+        if not picks:
+            return {"ok": False, "error": f"No picks found for team {team_id} in GW{gw}. "
+                    "The team ID may be wrong, or that gameweek hasn't been played yet."}
+
+        entry = {}
+        try:
+            entry = fetch_fpl_entry(team_id)
+        except Exception:
+            pass
+
+        squad = []
+        for pk in picks:
+            el = pk.get("element")
+            base_rec = rich.get(el, {})
+            squad.append({
+                **base_rec,  # name, team, position, price, form, xgi, minutes, …
+                "element": el,
+                "slot": pk.get("position"),            # 1-15 ordering
+                "multiplier": pk.get("multiplier", 1),
+                "is_captain": pk.get("is_captain", False),
+                "is_vice": pk.get("is_vice_captain", False),
+                "is_bench": pk.get("position", 0) > 11,
+            })
+
+        eh = picks_data.get("entry_history", {}) or {}
+        bank = (eh.get("bank") or 0) / 10.0
+        tv = (eh.get("value") or 0) / 10.0
+
+        return {
+            "ok": True, "error": None,
+            "manager": (f"{entry.get('player_first_name','')} "
+                        f"{entry.get('player_last_name','')}").strip() or "Manager",
+            "team_name": entry.get("name", "My Team"),
+            "overall_rank": entry.get("summary_overall_rank"),
+            "bank": round(bank, 1),
+            "team_value": round(tv, 1),
+            "gw": gw,
+            "squad": squad,
+        }
+    except Exception as e:  # network / JSON / id errors
+        return {"ok": False, "error": f"Could not import team {team_id}: {e}"}
+
+
 def build_team_strength(bootstrap: dict) -> dict:
     """
     Capture FPL's own team strength ratings (updated on recent form) for use
