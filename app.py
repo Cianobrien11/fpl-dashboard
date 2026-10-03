@@ -20,6 +20,7 @@ from flask import (Flask, abort, jsonify, redirect, render_template, request,
                    send_from_directory, url_for)
 
 import analytics
+import mobile
 import models
 import scraper
 
@@ -184,6 +185,69 @@ def planner():
 # --------------------------------------------------------------------------
 def _players(snap: dict) -> list:
     return snap.get("players", []) or []
+
+
+# ---------------------------------------------------------------------------
+# MOBILE APP (FPL IQ) — a separate, mobile-first frontend served under /app.
+# Reuses the same analytics engine; the desktop dashboard is unchanged.
+# ---------------------------------------------------------------------------
+@app.route("/app")
+def m_home():
+    snap = _ensure_data()
+    players = _players(snap)
+    data = mobile.home_payload(snap, players)
+    return render_template("m_home.html", tab="home", **data)
+
+
+@app.route("/app/players")
+def m_players():
+    snap = _ensure_data()
+    return render_template(
+        "m_stub.html", tab="players", gw=snap.get("next_gw"),
+        title="Players",
+        blurb="A searchable player database with xPts, form, ownership, price, "
+              "fixtures, value and your proprietary FPL IQ score.",
+        features=["Search & filter by position, team, price",
+                  "xPts, form & value scores", "Next-5 fixture ticker",
+                  "Underlying stats (xG, xA per 90)", "Add to watchlist"])
+
+
+@app.route("/app/planner")
+def m_planner():
+    snap = _ensure_data()
+    return render_template(
+        "m_stub.html", tab="planner", gw=snap.get("next_gw"),
+        title="Planner",
+        blurb="Plan transfers across a gameweek range with projected points, "
+              "fixture difficulty and a side-by-side transfer simulator.",
+        features=["GW range selector (e.g. GW6 → GW11)",
+                  "Per-GW projected points", "Transfer simulator (compare A vs B)",
+                  "Team value tracking"])
+
+
+@app.route("/app/team")
+def m_team():
+    snap = _ensure_data()
+    return render_template(
+        "m_stub.html", tab="team", gw=snap.get("next_gw"),
+        title="My Team",
+        blurb="Import your FPL team to see your starting XI, bench, captain, "
+              "projected score and a full squad analysis.",
+        features=["Import by FPL team ID", "Starting XI & bench view",
+                  "Projected GW score", "Flagged players & bank",
+                  "“Analyse my team” insights"])
+
+
+@app.route("/app/analytics")
+def m_analytics():
+    snap = _ensure_data()
+    return render_template(
+        "m_stub.html", tab="analytics", gw=snap.get("next_gw"),
+        title="Analytics",
+        blurb="The deep-dive hub: Team Radar, Head-to-Head records, the "
+              "captaincy model, differential finder, set-pieces and model accuracy.",
+        features=["Team Radar", "H2H vs next opponent", "Captaincy model",
+                  "Differential finder", "Set-piece takers", "Prediction accuracy"])
 
 
 @app.route("/players")
