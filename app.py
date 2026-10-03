@@ -216,13 +216,15 @@ def m_players():
 def m_planner():
     snap = _ensure_data()
     players = _players(snap)
+    gw_from = request.args.get("from")
+    gw_to = request.args.get("to")
     data = mobile.planner_payload(
-        snap, players,
-        gw_from=request.args.get("from"),
-        gw_to=request.args.get("to"),
+        snap, players, gw_from=gw_from, gw_to=gw_to,
         sim_a=request.args.get("a", "").strip(),
         sim_b=request.args.get("b", "").strip())
-    return render_template("m_planner.html", tab="planner", gw=snap.get("next_gw"), **data)
+    grid = mobile.planner_grid(snap, players, gw_from=data["gw_from"], gw_to=data["gw_to"])
+    return render_template("m_planner.html", tab="planner", gw=snap.get("next_gw"),
+                           grid=grid, **data)
 
 
 @app.route("/app/team", methods=["GET", "POST"])

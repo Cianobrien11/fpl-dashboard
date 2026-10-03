@@ -487,3 +487,71 @@ def analytics_sub_payload(section, snap, players=None, logs=None):
         out["note"] = f"Could not load {section}: {e}"
         out["data"] = [] if section not in ("setpieces", "accuracy") else ({} if section == "setpieces" else {"per_gw": [], "overall": {}})
     return out
+
+
+def planner_grid(snap, players=None, gw_from=None, gw_to=None):
+    """Position x gameweek difficulty grid for the user's squad.
+
+    Returns {gws, rows:[{pos, cells:[{band, d}]}], team_row:[{xpts}|None],
+             has_live}. Each position cell averages that position's players'
+    fixture difficulty for the GW (0 easy .. 2 hard). The team row sums the
+    squad's per-GW xPts when live data is present.
+    """
+    players = players or snap.get("players", []) or []
+    fixtures = snap.get("fixtures", {})
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    squad = snap.get("squad", []) or []
+    next_gw = snap.get("next_gw") or snap.get("current_gw") or 1
+    gw_from = int(gw_from or next_gw)
+    gw_to = int(gw_to or min(gw_from + 5, 38))
+    has_live = len(players) > 0
+
+    ticker = analytics.my_team_ticker(squad, rankings, fixtures, gw_from, gw_to)
+    gws = ticker.get("gws", [])
+    trows = ticker.get("rows", [])
+    n = len(gws)
+
+    def band_from_d(d):
+        # d: 0 easy, 1 mid, 2 hard  -> green/amber/red
+        if d <= 0.66:
+            return "easy"
+        if d <= 1.33:
+            return "mid"
+        return "hard"
+
+    rows = []
+    for pos in ("GK", "DEF", "MID", "FWD"):
+        pos_rows = [r for r in trows if r.get("position") == pos]
+        cells = []
+        for i in range(n):
+            ds = [r["cells"][i]["d"] for r in pos_rows if i < len(r["cells"]) and r["cells"][i]["txt"] != "-"]
+            if ds:
+                avg = sum(ds) / len(ds)
+                cells.append({"d": round(avg, 2), "band": band_from_d(avg)})
+            else:
+                cells.append({"d": None, "band": "mid"})
+        rows.append({"pos": pos, "cells": cells})
+
+    # Team projected row: sum squad xPts per GW (needs live players)
+    team_row = [None] * n
+    if has_live:
+        by_name = {pl.get("name", "").lower(): pl for pl in players}
+        for gi, gwlabel in enumerate(gws):
+            gwnum = int(gwlabel.replace("GW", ""))
+            try:
+                xp = analytics.expected_points(players, rankings, fixtures, gwnum)
+                xp_name = {r.get("name", "").lower(): r.get("xpts", 0) for r in xp}
+                vals = []
+                for m in squad:
+                    v = xp_name.get(m.get("name", "").lower())
+                    if v is not None:
+                        vals.append(v)
+                if vals:
+                    vals.sort(reverse=True)
+                    team_row[gi] = round(sum(vals[:11]), 1)
+            except Exception:
+                pass
+
+    return {"gws": gws, "rows": rows, "team_row": team_row,
+            "has_live": has_live, "gw_from": gw_from, "gw_to": gw_to,
+            "next_gw": next_gw}

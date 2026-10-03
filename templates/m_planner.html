@@ -36,6 +36,27 @@
   .sim-mid .diff.pos{color:var(--easy)}.sim-mid .diff.neg{color:var(--hard)}
   .sim-mid .lbl{font-size:9px;color:var(--muted);margin-top:2px}
   .empty{font-size:12px;color:var(--muted);line-height:1.55;text-align:center;padding:22px 12px}
+
+  /* position x gameweek grid */
+  .grid-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 10px;margin-bottom:12px;overflow-x:auto}
+  table.posgrid{width:100%;border-collapse:collapse;font-size:12px;min-width:300px}
+  table.posgrid th{color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:5px 4px;text-align:center}
+  table.posgrid th.pos{text-align:left;width:40px}
+  table.posgrid td{padding:4px;text-align:center}
+  table.posgrid td.pos{text-align:left;font-weight:800;font-size:12px;color:var(--text)}
+  .cell{width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;margin:0 auto}
+  .cell.easy{background:var(--easy-bg);color:var(--easy)}
+  .cell.mid{background:var(--mid-bg);color:var(--mid)}
+  .cell.hard{background:var(--hard-bg);color:var(--hard)}
+  .cell.na{background:var(--bg);color:var(--muted)}
+  tr.teamrow td{border-top:2px solid var(--border);padding-top:8px}
+  tr.teamrow td.pos{color:var(--accent)}
+  .teamval{font-weight:900;color:var(--accent);font-size:13px;font-variant-numeric:tabular-nums}
+  .teamval.na{color:var(--muted);font-weight:700}
+  .grid-legend{display:flex;gap:12px;justify-content:center;margin-top:10px;font-size:10px;color:var(--muted)}
+  .grid-legend span{display:inline-flex;align-items:center;gap:4px}
+  .dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+  .dot.easy{background:var(--easy)}.dot.mid{background:var(--mid)}.dot.hard{background:var(--hard)}
 </style>
 
 <div class="sec-label">Planner</div>
@@ -58,6 +79,38 @@
   </div>
 </div>
 </form>
+
+<div class="sec-label">Fixture difficulty by position · GW{{ grid.gw_from }}–{{ grid.gw_to }}</div>
+<div class="grid-wrap">
+  <table class="posgrid">
+    <tr>
+      <th class="pos">Pos</th>
+      {% for g in grid.gws %}<th>{{ g.replace('GW','') }}</th>{% endfor %}
+    </tr>
+    {% for row in grid.rows %}
+    <tr>
+      <td class="pos">{{ row.pos }}</td>
+      {% for c in row.cells %}
+      <td>
+        {% if c.d is none %}<span class="cell na">–</span>
+        {% else %}<span class="cell {{ c.band }}"></span>{% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    <tr class="teamrow">
+      <td class="pos">Team</td>
+      {% for v in grid.team_row %}
+      <td>{% if v is not none %}<span class="teamval">{{ v }}</span>{% else %}<span class="teamval na">–</span>{% endif %}</td>
+      {% endfor %}
+    </tr>
+  </table>
+  <div class="grid-legend">
+    <span><span class="dot easy"></span>Easy</span>
+    <span><span class="dot mid"></span>Medium</span>
+    <span><span class="dot hard"></span>Hard</span>
+  </div>
+</div>
 
 {% if targets %}
 <div class="sec-label">Projected points · GW{{ gw_from }}–{{ gw_to }}</div>
