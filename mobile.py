@@ -555,3 +555,142 @@ def planner_grid(snap, players=None, gw_from=None, gw_to=None):
     return {"gws": gws, "rows": rows, "team_row": team_row,
             "has_live": has_live, "gw_from": gw_from, "gw_to": gw_to,
             "next_gw": next_gw}
+
+
+# ---------------------------------------------------------------------------
+# ASK FPL IQ — natural-language questions answered from the model's structured
+# data (NOT a generic LLM). Supports transfer comparisons, captaincy, and
+# "best <position> under £Nm" style queries.
+# ---------------------------------------------------------------------------
+import re as _re
+
+
+def _find_player(name_frag, pool):
+    """Best-effort match a name fragment to a player in the xPts pool."""
+    name_frag = (name_frag or "").strip().lower()
+    if not name_frag:
+        return None
+    # exact, then startswith, then contains
+    for r in pool:
+        if r["name"].lower() == name_frag:
+            return r
+    for r in pool:
+        if r["name"].lower().startswith(name_frag):
+            return r
+    for r in pool:
+        if name_frag in r["name"].lower():
+            return r
+    return None
+
+
+def ask_fpl_iq(question, snap, players=None, gw_from=None, gw_to=None):
+    """Answer an FPL question from the model. Returns:
+      {ok, kind, question, answer, detail, comparison, players, note}
+    kind in {transfer, captain, best, unknown}. `comparison` carries the
+    per-GW A/B breakdown for transfer questions.
+    """
+    players = players or snap.get("players", []) or []
+    fixtures = snap.get("fixtures", {})
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    next_gw = snap.get("next_gw") or snap.get("current_gw") or 1
+    gw_from = int(gw_from or next_gw)
+    gw_to = int(gw_to or min(gw_from + 5, 38))
+    q = (question or "").strip()
+    out = {"ok": False, "kind": "unknown", "question": q, "answer": None,
+           "detail": None, "comparison": None, "players": [], "note": None,
+           "gw_from": gw_from, "gw_to": gw_to}
+
+    if not q:
+        out["note"] = "Ask me something like \u201cShould I transfer Mbeumo for Saka?\u201d"
+        return out
+    if not players:
+        out["note"] = "I need live player data first \u2014 tap \u201cRefresh Data\u201d on the dashboard."
+        return out
+
+    rng = analytics.expected_points_range(players, rankings, fixtures, gw_from, gw_to)
+    ql = q.lower()
+
+    # --- Transfer comparison: "X for Y", "X vs Y", "X or Y", "X to Y" ---
+    m = _re.search(r"([a-z\u00c0-\u017f .'-]+?)\s+(?:for|vs\.?|or|to|->|\u2192)\s+([a-z\u00c0-\u017f .'-]+)", ql)
+    if m and ("transfer" in ql or "swap" in ql or " for " in ql or " vs" in ql or " or " in ql or "->" in ql or "\u2192" in ql):
+        a_name = m.group(1).replace("should i transfer", "").replace("transfer", "").replace("swap", "").strip()
+        b_name = m.group(2).strip().rstrip("?.! ")
+        a = _find_player(a_name, rng)
+        b = _find_player(b_name, rng)
+        if a and b:
+            per = []
+            diff_total = 0.0
+            for gw in range(gw_from, gw_to + 1):
+                av = a["per_gw"].get(gw, 0.0)
+                bv = b["per_gw"].get(gw, 0.0)
+                per.append({"gw": gw, "a": round(av, 1), "b": round(bv, 1),
+                            "diff": round(bv - av, 1)})
+            diff_total = round(b["total_xpts"] - a["total_xpts"], 1)
+            better = b if diff_total > 0 else a
+            out.update({
+                "ok": True, "kind": "transfer",
+                "answer": (f"{'Yes' if diff_total > 0 else 'No'} \u2014 "
+                           f"{better['name']} projects higher over GW{gw_from}\u2013{gw_to}."),
+                "detail": (f"{b['name']} is projected {abs(diff_total)} pts "
+                           f"{'more' if diff_total > 0 else 'fewer'} than {a['name']} "
+                           f"across these {gw_to - gw_from + 1} gameweeks."),
+                "comparison": {"a": a, "b": b, "per_gw": per, "diff_total": diff_total},
+            })
+            return out
+        out["note"] = ("I couldn\u2019t match both players. Try full surnames, "
+                       "e.g. \u201cMbeumo for Saka\u201d.")
+        return out
+
+    # --- Captain: "who should I captain" ---
+    if "captain" in ql or "armband" in ql:
+        board = analytics.captaincy_board(players, rankings, fixtures, gw_from, limit=5)
+        if board:
+            top = board[0]
+            out.update({
+                "ok": True, "kind": "captain",
+                "answer": f"Captain {top['name']} ({top['team']}) in GW{gw_from}.",
+                "detail": f"Highest projected points this gameweek at {round(top['xpts'],1)} xPts.",
+                "players": board,
+            })
+            return out
+
+    # --- Best <position> under £Nm ---
+    pos = None
+    for key, label in [("goalkeep", "GK"), ("keeper", "GK"), ("defend", "DEF"),
+                       ("midfield", "MID"), ("forward", "FWD"), ("striker", "FWD"),
+                       (" gk", "GK"), (" def", "DEF"), (" mid", "MID"), (" fwd", "FWD")]:
+        if key in ql:
+            pos = label
+            break
+    price_m = _re.search(r"(?:under|below|<|max)\s*\u00a3?\s*(\d+(?:\.\d+)?)", ql)
+    maxp = float(price_m.group(1)) if price_m else None
+    if pos or maxp or "best" in ql or "who should i" in ql:
+        pool = rng
+        if pos:
+            pool = [r for r in pool if r.get("position") == pos]
+        if maxp:
+            pool = [r for r in pool if (r.get("price", 99) or 99) <= maxp]
+        if (pos or maxp) and not pool:
+            out["note"] = "No players match that filter in the current data \u2014 try a higher price or different position."
+            return out
+        pool = pool[:6]
+        if pool:
+            top = pool[0]
+            desc = []
+            if pos: desc.append({"GK": "goalkeeper", "DEF": "defender",
+                                 "MID": "midfielder", "FWD": "forward"}[pos])
+            else: desc.append("player")
+            if maxp: desc.append(f"under \u00a3{maxp}m")
+            out.update({
+                "ok": True, "kind": "best",
+                "answer": f"{top['name']} ({top['team']}) is the top {' '.join(desc)} "
+                          f"for GW{gw_from}\u2013{gw_to}.",
+                "detail": f"Projected {top['total_xpts']} pts over the window "
+                          f"(\u00a3{top.get('price','?')}m).",
+                "players": pool,
+            })
+            return out
+
+    out["note"] = ("Try: \u201cShould I transfer X for Y?\u201d, \u201cWho should I "
+                   "captain?\u201d, or \u201cbest midfielder under \u00a38m\u201d.")
+    return out

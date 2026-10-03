@@ -1,0 +1,117 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Ask{% endblock %}
+{% block content %}
+<style>
+  .ask-hero{background:linear-gradient(135deg,var(--p1),var(--p2));border-radius:16px;padding:16px;margin-bottom:14px}
+  .ask-hero h2{font-size:18px;font-weight:900;color:#fff;display:flex;align-items:center;gap:8px}
+  .ask-hero p{font-size:12px;color:rgba(255,255,255,.85);margin-top:5px;line-height:1.45}
+
+  .ask-form{display:flex;gap:8px;margin-bottom:10px}
+  .ask-form input{flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:13px 15px;font-size:15px}
+  .ask-form button{background:var(--accent);color:#06130d;border:none;border-radius:12px;padding:0 18px;font-weight:900;font-size:14px}
+
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .chips a{font-size:11.5px;font-weight:700;padding:7px 12px;border-radius:100px;background:var(--surface);color:var(--muted);border:1px solid var(--border)}
+
+  .ans-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px}
+  .ans-head{font-size:17px;font-weight:900;line-height:1.3;margin-bottom:6px}
+  .ans-detail{font-size:13px;color:var(--muted);line-height:1.5}
+  .note{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:13px;font-size:13px;color:var(--muted);line-height:1.5}
+
+  /* transfer comparison */
+  .vs{display:flex;align-items:stretch;gap:10px;margin:14px 0 6px}
+  .vs .side{flex:1;background:var(--bg);border-radius:12px;padding:12px;text-align:center}
+  .vs .side.win{outline:2px solid var(--accent)}
+  .vs .side .nm{font-size:14px;font-weight:800}
+  .vs .side .tm{font-size:10px;color:var(--muted);margin-top:1px}
+  .vs .side .tot{font-size:22px;font-weight:900;margin-top:7px;font-variant-numeric:tabular-nums}
+  .vs .side.win .tot{color:var(--accent)}
+  .vs .mid{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:54px}
+  .vs .mid .d{font-size:16px;font-weight:900}.vs .mid .d.pos{color:var(--easy)}.vs .mid .d.neg{color:var(--hard)}
+  .vs .mid .l{font-size:9px;color:var(--muted)}
+
+  table.gwb{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+  table.gwb th{color:var(--muted);font-size:9.5px;text-transform:uppercase;padding:6px 5px;border-bottom:1px solid var(--border);text-align:center}
+  table.gwb th:first-child{text-align:left}
+  table.gwb td{padding:7px 5px;border-bottom:1px solid var(--border);text-align:center;font-variant-numeric:tabular-nums}
+  table.gwb td:first-child{text-align:left;font-weight:700}
+  table.gwb tr:last-child td{border-bottom:none}
+  .d-pos{color:var(--easy);font-weight:800}.d-neg{color:var(--hard);font-weight:800}
+
+  .plist .row{display:flex;align-items:center;gap:11px;padding:10px 2px;border-bottom:1px solid var(--border)}
+  .plist .row:last-child{border-bottom:none}
+  .plist .rk{width:18px;font-weight:900;color:var(--muted);font-size:12px;font-family:monospace}
+  .plist .nm{font-size:14px;font-weight:800}.plist .tm{font-size:10px;color:var(--muted)}
+  .plist .v{margin-left:auto;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
+</style>
+
+<div class="backbar" style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+  <a href="{{ url_for('m_analytics') }}" style="display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--muted)">
+    <svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:2.5"><path d="M15 18l-6-6 6-6"/></svg> Analytics</a>
+</div>
+
+<div class="ask-hero">
+  <h2>🧠 Ask FPL IQ</h2>
+  <p>Ask a transfer, captain or value question — answered from the FPL IQ model, not generic AI.</p>
+</div>
+
+<form class="ask-form" method="get" action="{{ url_for('m_ask') }}">
+  <input type="text" name="q" value="{{ q or '' }}" placeholder="Should I transfer Mbeumo for Saka?" autofocus>
+  <button type="submit">Ask</button>
+</form>
+
+<div class="chips">
+  <a href="{{ url_for('m_ask', q='Who should I captain?') }}">Who should I captain?</a>
+  <a href="{{ url_for('m_ask', q='best midfielder under £8m') }}">Best mid under £8m</a>
+  <a href="{{ url_for('m_ask', q='best forward') }}">Best forward</a>
+</div>
+
+{% if result and result.ok %}
+  <div class="ans-card">
+    <div class="ans-head">{{ result.answer }}</div>
+    {% if result.detail %}<div class="ans-detail">{{ result.detail }}</div>{% endif %}
+
+    {% if result.kind == 'transfer' and result.comparison %}
+      {% set c = result.comparison %}
+      <div class="vs">
+        <div class="side {{ 'win' if c.diff_total <= 0 }}">
+          <div class="nm">{{ c.a.name }}</div><div class="tm">{{ c.a.team }}</div>
+          <div class="tot">{{ c.a.total_xpts }}</div>
+        </div>
+        <div class="mid">
+          <div class="d {{ 'pos' if c.diff_total>0 else 'neg' if c.diff_total<0 else '' }}">{{ '+' if c.diff_total>0 }}{{ c.diff_total }}</div>
+          <div class="l">B − A</div>
+        </div>
+        <div class="side {{ 'win' if c.diff_total > 0 }}">
+          <div class="nm">{{ c.b.name }}</div><div class="tm">{{ c.b.team }}</div>
+          <div class="tot">{{ c.b.total_xpts }}</div>
+        </div>
+      </div>
+      <table class="gwb">
+        <tr><th>GW</th><th>{{ c.a.name }}</th><th>{{ c.b.name }}</th><th>Diff</th></tr>
+        {% for row in c.per_gw %}
+        <tr>
+          <td>GW{{ row.gw }}</td><td>{{ row.a }}</td><td>{{ row.b }}</td>
+          <td class="{{ 'd-pos' if row.diff>0 else 'd-neg' if row.diff<0 else '' }}">{{ '+' if row.diff>0 }}{{ row.diff }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    {% endif %}
+
+    {% if result.players %}
+      <div class="plist" style="margin-top:10px">
+        {% for p in result.players %}
+        <div class="row">
+          <div class="rk">{{ loop.index }}</div>
+          <div><div class="nm">{{ p.name }}</div><div class="tm">{{ p.team }}{% if p.position %} · {{ p.position }}{% endif %}</div></div>
+          <div class="v">{{ p.total_xpts if p.total_xpts is defined else ('%.1f'|format(p.xpts)) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% elif result and result.note %}
+  <div class="note">{{ result.note }}</div>
+{% endif %}
+
+{% endblock %}

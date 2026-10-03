@@ -281,6 +281,16 @@ def m_analytics_sub(section):
     return render_template("m_analytics_sub.html", tab="analytics", **data)
 
 
+@app.route("/app/ask")
+def m_ask():
+    snap = _ensure_data()
+    players = _players(snap)
+    q = request.args.get("q", "").strip()
+    result = mobile.ask_fpl_iq(q, snap, players=players) if q else None
+    return render_template("m_ask.html", tab="analytics", q=q, result=result,
+                           gw=snap.get("next_gw"))
+
+
 @app.route("/players")
 def players_page():
     snap = _ensure_data()

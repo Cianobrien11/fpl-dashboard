@@ -25,6 +25,17 @@
 
 <div class="sec-label">Analytics</div>
 
+<a href="{{ url_for('m_ask') }}" style="display:block;text-decoration:none;background:linear-gradient(135deg,var(--p1),var(--p2));border-radius:16px;padding:16px;margin-bottom:14px">
+  <div style="display:flex;align-items:center;gap:12px">
+    <div style="font-size:26px">🧠</div>
+    <div>
+      <div style="font-size:16px;font-weight:900;color:#fff">Ask FPL IQ</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:2px">“Should I transfer Mbeumo for Saka?” — answered by the model</div>
+    </div>
+    <div style="margin-left:auto;color:#fff;font-size:20px">→</div>
+  </div>
+</a>
+
 {% if captaincy %}
 <div class="preview">
   <a href="{{ url_for('m_analytics_sub', section='captaincy') }}" style="color:inherit"><h3>Captaincy <span class="tag">View all →</span></h3></a>
