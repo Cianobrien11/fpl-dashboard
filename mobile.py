@@ -53,8 +53,12 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
         "vice": None,
         "transfer": None,
         "top_players": [],
+        "opportunities": [],   # best xPts players NOT already in the squad
+        "transfer_gain": None, # +xPts the recommended transfer adds (if known)
         "outlook": [],
     }
+
+    squad_names = {m.get("name", "").lower() for m in squad}
 
     # --- Captain & vice (works from seed; appeal-ranked squad members) ---
     try:
@@ -73,6 +77,17 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
             # xp: list of player dicts with an 'xpts' field (sorted desc)
             xp_sorted = sorted(xp, key=lambda p: p.get("xpts", 0), reverse=True)
             out["top_players"] = xp_sorted[:6]
+
+            # Attach real xPts to captain / vice if we recommended them
+            xp_name = {p.get("name", "").lower(): p.get("xpts", 0) for p in xp}
+            if out["captain"]:
+                out["captain"]["xpts"] = round(xp_name.get(out["captain"]["name"].lower(), 0), 1)
+            if out["vice"]:
+                out["vice"]["xpts"] = round(xp_name.get(out["vice"]["name"].lower(), 0), 1)
+
+            # Best opportunities = top xPts players NOT already owned
+            opps = [p for p in xp_sorted if p.get("name", "").lower() not in squad_names]
+            out["opportunities"] = opps[:5]
 
             # Projected score = sum of xPts for the user's starting XI if we can
             # match squad names to the xp list; else sum top-11 of their squad.
@@ -101,6 +116,13 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
                 moves = plan
             if moves:
                 out["transfer"] = moves[0]
+                mv = moves[0]
+                gain = None
+                if isinstance(mv, dict):
+                    gain = mv.get("gain") or mv.get("xpts_gain") or mv.get("delta")
+                    if gain is None and isinstance(mv.get("move"), dict):
+                        gain = mv["move"].get("gain")
+                out["transfer_gain"] = round(gain, 1) if isinstance(gain, (int, float)) else None
         except Exception:
             pass
 

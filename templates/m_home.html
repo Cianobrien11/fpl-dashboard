@@ -2,86 +2,87 @@
 {% block title %}FPL IQ — Home{% endblock %}
 {% block content %}
 <style>
+  .qline{font-size:13px;font-weight:800;color:var(--muted);margin:2px 4px 10px;letter-spacing:.01em}
+
   .hero{position:relative;overflow:hidden}
   .hero .lbl{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.75)}
-  .hero .big{font-size:46px;font-weight:900;color:#fff;line-height:1;margin:4px 0 2px;font-variant-numeric:tabular-nums}
-  .hero .sub{font-size:12px;color:rgba(255,255,255,.8)}
-  .hero .pill{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.18);
-    color:#fff;font-size:11px;font-weight:800;padding:5px 10px;border-radius:100px}
+  .hero .big{font-size:48px;font-weight:900;color:#fff;line-height:1;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+  .hero .sub{font-size:12px;color:rgba(255,255,255,.82)}
+  .hero .pill{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.18);color:#fff;font-size:11px;font-weight:800;padding:5px 10px;border-radius:100px}
 
-  .row{display:flex;align-items:center;gap:12px}
-  .cap-badge{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;
-    font-weight:900;font-size:18px;background:linear-gradient(135deg,var(--p1),var(--p2));color:#fff;flex:none}
-  .cap-name{font-size:16px;font-weight:800}
-  .cap-meta{font-size:12px;color:var(--muted);margin-top:2px}
-  .cap-score{margin-left:auto;text-align:right}
-  .cap-score .v{font-size:20px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
-  .cap-score .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  /* captain + vice as two compact cards side by side */
+  .cv{display:flex;gap:10px}
+  .cv .cvcard{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px}
+  .cv .role{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+  .cv .arm{width:24px;height:24px;border-radius:50%;font-size:12px;font-weight:900;color:#fff;display:flex;align-items:center;justify-content:center}
+  .cv .arm.c{background:var(--p2)}.cv .arm.v{background:#2b6cb0}
+  .cv .role span{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+  .cv .nm{font-size:15px;font-weight:800}
+  .cv .meta{font-size:11px;color:var(--muted);margin-top:2px}
+  .cv .xp{margin-top:9px;font-size:20px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
+  .cv .xp small{font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;margin-left:3px}
 
-  .xfer{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700}
-  .xfer .out{color:var(--hard)}.xfer .in{color:var(--easy)}
-  .xfer .arrow{color:var(--muted);font-size:18px}
-  .xfer-gain{margin-left:auto;background:var(--easy-bg);color:var(--easy);font-size:12px;font-weight:800;
-    padding:4px 9px;border-radius:100px;white-space:nowrap}
+  /* recommended transfer */
+  .xfer{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:800}
+  .xfer .out{color:var(--hard)}.xfer .in{color:var(--easy)}.xfer .arrow{color:var(--muted);font-size:18px}
+  .xfer-gain{margin-left:auto;background:var(--easy-bg);color:var(--easy);font-size:13px;font-weight:900;padding:5px 11px;border-radius:100px;white-space:nowrap}
   .xfer-reason{font-size:12px;color:var(--muted);margin-top:9px;line-height:1.45}
 
-  .plist{display:flex;flex-direction:column}
-  .pitem{display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--border)}
-  .pitem:last-child{border-bottom:none}
-  .prank{width:20px;font-weight:800;color:var(--muted);font-size:13px;font-family:monospace}
-  .pname{font-size:14px;font-weight:700}
-  .pteam{font-size:11px;color:var(--muted);margin-top:1px}
-  .pxp{margin-left:auto;font-weight:900;font-size:15px;color:var(--accent);font-variant-numeric:tabular-nums}
+  /* best opportunities table */
+  table.opps{width:100%;border-collapse:collapse;font-size:13px}
+  table.opps th{text-align:left;color:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;padding:6px 6px;border-bottom:1px solid var(--border)}
+  table.opps td{padding:9px 6px;border-bottom:1px solid var(--border)}
+  table.opps tr:last-child td{border-bottom:none}
+  .opp-nm{font-weight:800}.opp-tm{font-size:10px;color:var(--muted)}
+  .opp-pos{font-size:9px;font-weight:800;padding:2px 5px;border-radius:4px;color:#fff;margin-right:5px}
+  .op-GK{background:#b45309}.op-DEF{background:#2b6cb0}.op-MID{background:#15803d}.op-FWD{background:#9d174d}
+  .opp-xp{text-align:right;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
+  .opp-own{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px}
 
-  .bars{display:flex;align-items:flex-end;gap:10px;height:120px;padding:6px 2px 0}
-  .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
-  .bar .col{width:100%;border-radius:7px 7px 3px 3px;min-height:6px;transition:height .5s ease}
+  .bars{display:flex;align-items:flex-end;gap:9px;height:96px;padding:6px 2px 0}
+  .bar{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end}
+  .bar .col{width:100%;border-radius:6px 6px 3px 3px;min-height:5px}
   .bar.easy .col{background:linear-gradient(180deg,var(--easy),#1f8a4c)}
   .bar.mid .col{background:linear-gradient(180deg,var(--mid),#8a6a10)}
   .bar.hard .col{background:linear-gradient(180deg,var(--hard),#8a2a2a)}
   .bar .gw{font-size:10px;font-weight:700;color:var(--muted)}
 
-  .empty{font-size:12px;color:var(--muted);line-height:1.5;padding:4px 2px}
-  .refresh-note{font-size:11px;color:var(--muted);text-align:center;margin:14px 0 4px}
+  .cta{display:block;width:100%;text-align:center;background:var(--accent);color:#06130d;font-weight:900;font-size:16px;padding:16px;border-radius:14px;border:none;margin:4px 0 2px;letter-spacing:.02em}
+  .empty{font-size:12px;color:var(--muted);line-height:1.5;padding:2px 2px}
+  .refresh-note{font-size:11px;color:var(--muted);text-align:center;margin:14px 0 2px}
 </style>
 
+<div class="qline">What should I do this gameweek?</div>
+
 <!-- Projected score hero -->
-<div class="sec-label">Your Team</div>
 <div class="card grad hero">
   <div class="pill">GW{{ gw }}</div>
-  <div class="lbl">Projected points</div>
+  <div class="lbl">Your projected points</div>
   {% if projected is not none %}
     <div class="big">{{ projected }}</div>
-    <div class="sub">Based on your starting XI's expected points</div>
+    <div class="sub">Starting XI expected points this gameweek</div>
   {% else %}
     <div class="big">—</div>
-    <div class="sub">Tap Refresh on the dashboard to pull live player data</div>
+    <div class="sub">Refresh on the dashboard to pull live data</div>
   {% endif %}
 </div>
 
-<!-- Captain recommendation -->
+<!-- Captain + Vice -->
 {% if captain %}
-<div class="sec-label">Captain Pick</div>
-<div class="card">
-  <div class="row">
-    <div class="cap-badge">C</div>
-    <div>
-      <div class="cap-name">{{ captain.name }}</div>
-      <div class="cap-meta">{{ captain.team }} · {{ captain.opponent }} ({{ captain.venue }})</div>
-    </div>
-    <div class="cap-score">
-      <div class="v">{{ captain.appeal }}</div>
-      <div class="k">Appeal</div>
-    </div>
+<div class="sec-label">Captain</div>
+<div class="cv">
+  <div class="cvcard">
+    <div class="role"><span class="arm c">C</span><span>Captain</span></div>
+    <div class="nm">{{ captain.name }}</div>
+    <div class="meta">{{ captain.team }} · {{ captain.opponent }} ({{ captain.venue }})</div>
+    <div class="xp">{{ captain.xpts if captain.xpts is defined and captain.xpts else captain.appeal }}<small>{{ 'xPts' if captain.xpts is defined and captain.xpts else 'appeal' }}</small></div>
   </div>
   {% if vice %}
-  <div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-    <div class="cap-badge" style="background:var(--surface2);color:var(--muted);font-size:14px">V</div>
-    <div>
-      <div class="cap-name" style="font-size:14px">{{ vice.name }}</div>
-      <div class="cap-meta">{{ vice.team }} · {{ vice.opponent }} ({{ vice.venue }})</div>
-    </div>
-    <div class="cap-score"><div class="v" style="font-size:16px">{{ vice.appeal }}</div><div class="k">Appeal</div></div>
+  <div class="cvcard">
+    <div class="role"><span class="arm v">V</span><span>Vice</span></div>
+    <div class="nm">{{ vice.name }}</div>
+    <div class="meta">{{ vice.team }} · {{ vice.opponent }} ({{ vice.venue }})</div>
+    <div class="xp" style="color:var(--text)">{{ vice.xpts if vice.xpts is defined and vice.xpts else vice.appeal }}<small>{{ 'xPts' if vice.xpts is defined and vice.xpts else 'appeal' }}</small></div>
   </div>
   {% endif %}
 </div>
@@ -95,37 +96,36 @@
       <span class="out">{{ transfer.move.out }}</span>
       <span class="arrow">→</span>
       <span class="in">{{ transfer.move.get('in') or transfer.move.in_team }}</span>
+      {% if transfer_gain %}<span class="xfer-gain">+{{ transfer_gain }} pts</span>{% endif %}
     </div>
     {% if transfer.move.reason %}<div class="xfer-reason">{{ transfer.move.reason }}</div>{% endif %}
   {% else %}
-    <div class="empty">Transfer suggestions appear once live player data is loaded. Pull a refresh from the dashboard to activate them.</div>
+    <div class="empty">Transfer suggestions appear once live player data is loaded.</div>
   {% endif %}
 </div>
 
-<!-- Top players -->
-{% if top_players %}
-<div class="sec-label">Top Players · xPts</div>
-<div class="card">
-  <div class="plist">
-    {% for p in top_players %}
-    <div class="pitem">
-      <div class="prank">{{ loop.index }}</div>
-      <div>
-        <div class="pname">{{ p.name }}</div>
-        <div class="pteam">{{ p.team }}{% if p.position %} · {{ p.position }}{% endif %}</div>
-      </div>
-      <div class="pxp">{{ '%.1f'|format(p.xpts) }}</div>
-    </div>
+<!-- Best opportunities -->
+{% if opportunities %}
+<div class="sec-label">📈 Best Opportunities</div>
+<div class="card" style="padding:4px 12px">
+  <table class="opps">
+    <tr><th>Player</th><th style="text-align:right">xPts</th><th style="text-align:right">Owned</th></tr>
+    {% for o in opportunities %}
+    <tr>
+      <td><span class="opp-pos op-{{ o.position }}">{{ o.position }}</span><span class="opp-nm">{{ o.name }}</span> <span class="opp-tm">{{ o.team }}</span></td>
+      <td class="opp-xp">{{ '%.1f'|format(o.xpts) }}</td>
+      <td class="opp-own">{{ '%.1f'|format(o.selected_by|default(0)) }}%</td>
+    </tr>
     {% endfor %}
-  </div>
+  </table>
 </div>
 {% endif %}
 
-<!-- Gameweek outlook -->
+<!-- Next 6 GWs -->
 {% if outlook %}
-<div class="sec-label">Gameweek Outlook</div>
+<div class="sec-label">🔮 Next {{ outlook|length }} Gameweeks</div>
 <div class="card">
-  <div class="bars" id="bars">
+  <div class="bars">
     {% for o in outlook %}
     <div class="bar {{ o.band }}">
       <div class="col" style="height:{{ (o.ease / 10 * 100)|round(0,'floor') }}%"></div>
@@ -133,10 +133,11 @@
     </div>
     {% endfor %}
   </div>
-  <div class="xfer-reason" style="margin-top:12px">Taller green bars = easier fixtures for your squad. Based on upcoming opponent difficulty.</div>
-  <a class="btn-accent" href="{{ url_for('m_planner') }}">View Planner</a>
 </div>
 {% endif %}
+
+<!-- Plan my team CTA -->
+<a class="cta" href="{{ url_for('m_planner') }}">PLAN MY TEAM →</a>
 
 {% if not has_live %}
 <div class="refresh-note">Showing seed data. Open the <a href="/" style="color:var(--accent)">dashboard</a> and tap “Refresh Data” for live stats.</div>
