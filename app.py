@@ -16,15 +16,19 @@ from __future__ import annotations
 import json
 import os
 
-from flask import (Flask, abort, jsonify, redirect, render_template, request,
-                   send_from_directory, url_for)
+from flask import (Flask, abort, flash, jsonify, redirect, render_template,
+                   request, send_from_directory, session, url_for)
 
 import analytics
+import mailer
 import mobile
 import models
 import scraper
 
 app = Flask(__name__)
+# Secret key for signed session cookies. Set SECRET_KEY in Render env for
+# production; falls back to a dev default locally.
+app.secret_key = os.environ.get("SECRET_KEY", "dev-fpliq-change-me-in-prod")
 try:
     BASE = os.path.dirname(os.path.abspath(__file__))
 except NameError:
@@ -34,13 +38,18 @@ SEED = os.path.join(BASE, "seed_data.json")
 
 @app.context_processor
 def inject_settings():
-    """Make saved settings available to EVERY template as `app_settings`,
-    so theme + odds visibility apply app-wide without each route passing them."""
+    """Make saved settings AND the logged-in user available to every template
+    (as `app_settings` and `current_user`), so theme/odds and account state
+    apply app-wide without each route passing them."""
     try:
         s = models.load_settings()
     except Exception:
         s = {}
-    return {"app_settings": s or {}}
+    try:
+        cu = current_user()
+    except Exception:
+        cu = None
+    return {"app_settings": s or {}, "current_user": cu}
 
 GW_FROM_DEFAULT = 4
 GW_TO_DEFAULT = 11
@@ -356,6 +365,75 @@ def m_account():
     snap = _ensure_data()
     return render_template("m_account.html", tab="settings",
                            gw=snap.get("next_gw"))
+
+
+# ---------------------------------------------------------------------------
+# AUTH — signup / verify / login / logout. Sessions store the logged-in user.
+# ---------------------------------------------------------------------------
+def current_user():
+    """Return the logged-in user's {id, email} from the session, or None."""
+    uid = session.get("uid")
+    if not uid:
+        return None
+    return {"id": uid, "email": session.get("uemail")}
+
+
+@app.route("/app/signup", methods=["POST"])
+def signup():
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    res = models.create_user(email, password)
+    if not res["ok"]:
+        return render_template("m_account.html", tab="settings",
+                               gw=_ensure_data().get("next_gw"),
+                               error=res["error"], mode="signup", email=email)
+    # Send the verification email (logs to console if no RESEND_API_KEY yet).
+    verify_url = url_for("verify_email", token=res["token"], _external=True)
+    mailer.send_verification_email(email, verify_url)
+    return render_template("m_account.html", tab="settings",
+                           gw=_ensure_data().get("next_gw"),
+                           pending=email)
+
+
+@app.route("/app/verify/<token>")
+def verify_email(token):
+    res = models.verify_user_token(token)
+    return render_template("m_verify.html", tab="settings",
+                           gw=_ensure_data().get("next_gw"),
+                           ok=res["ok"], error=res.get("error"),
+                           already=res.get("already", False))
+
+
+@app.route("/app/login", methods=["POST"])
+def login():
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    res = models.check_login(email, password)
+    if not res["ok"]:
+        return render_template("m_account.html", tab="settings",
+                               gw=_ensure_data().get("next_gw"),
+                               error=res["error"], mode="signin", email=email,
+                               unverified=res.get("unverified", False))
+    session["uid"] = res["user_id"]
+    session["uemail"] = res["email"]
+    return redirect(url_for("m_settings"))
+
+
+@app.route("/app/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("m_account"))
+
+
+@app.route("/app/resend", methods=["POST"])
+def resend_verification():
+    email = request.form.get("email", "").strip().lower()
+    token = models.set_verify_token(email)
+    if token:
+        verify_url = url_for("verify_email", token=token, _external=True)
+        mailer.send_verification_email(email, verify_url)
+    return render_template("m_account.html", tab="settings",
+                           gw=_ensure_data().get("next_gw"), pending=email)
 
 
 @app.route("/players")

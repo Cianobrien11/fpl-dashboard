@@ -1,0 +1,26 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Verify{% endblock %}
+{% block content %}
+<style>
+  .vbox{text-align:center;padding:40px 20px}
+  .vbox .ic{width:72px;height:72px;border-radius:50%;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:36px}
+  .vbox .ic.ok{background:var(--easy-bg)}
+  .vbox .ic.bad{background:var(--hard-bg)}
+  .vbox h2{font-size:21px;font-weight:900;margin-bottom:8px}
+  .vbox p{font-size:14px;color:var(--muted);line-height:1.55;max-width:320px;margin:0 auto 22px}
+  .vbtn{display:inline-block;background:var(--accent);color:#06130d;font-weight:800;font-size:15px;text-decoration:none;padding:13px 26px;border-radius:11px}
+</style>
+<div class="vbox">
+  {% if ok %}
+    <div class="ic ok">✅</div>
+    <h2>{{ "Already verified" if already else "Email verified!" }}</h2>
+    <p>{{ "Your account is already active." if already else "Your FPL IQ account is now active. Sign in to get started." }}</p>
+    <a class="vbtn" href="{{ url_for('m_account') }}">Sign in</a>
+  {% else %}
+    <div class="ic bad">⚠️</div>
+    <h2>Verification failed</h2>
+    <p>{{ error or "This verification link is invalid or has expired." }}</p>
+    <a class="vbtn" href="{{ url_for('m_account') }}">Back to account</a>
+  {% endif %}
+</div>
+{% endblock %}

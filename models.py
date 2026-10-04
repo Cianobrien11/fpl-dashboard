@@ -60,7 +60,8 @@ def init_db() -> None:
         # --- account groundwork (ready for Phase B multi-user auth) ---
         # users: one row per account. password_hash stays NULL until auth ships.
         f"CREATE TABLE IF NOT EXISTS users (id {pk}, email TEXT UNIQUE, "
-        "password_hash TEXT, created_at TEXT)",
+        "password_hash TEXT, created_at TEXT, verified INTEGER DEFAULT 0, "
+        "verify_token TEXT, verify_expires TEXT)",
         # user_settings: per-user JSON blob (team id, favourite team, prefs).
         # user_id 0 is reserved for the current single-user / anonymous device.
         "CREATE TABLE IF NOT EXISTS user_settings (user_id INTEGER PRIMARY KEY, data TEXT)",
@@ -235,3 +236,128 @@ def load_settings(user_id: int = 0) -> dict:
         except (ValueError, TypeError):
             return {}
     return {}
+
+
+# ---------------------------------------------------------------------------
+# Accounts / auth data layer. Passwords hashed via werkzeug (ships with Flask).
+# Email verification: unverified users get a token; verifying flips verified=1.
+# ---------------------------------------------------------------------------
+import datetime as _dt
+import secrets as _secrets
+
+from werkzeug.security import check_password_hash, generate_password_hash
+
+
+def _q(sql_pg: str, sql_sqlite: str, params=(), fetch=None):
+    """Run a parametrised query against whichever backend is active.
+    fetch: None (write), 'one', or 'all'. Returns rows for fetch modes."""
+    init_db()
+    if USE_PG:
+        conn = _pg_conn()
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute(sql_pg, params)
+                if fetch == "one":
+                    return cur.fetchone()
+                if fetch == "all":
+                    return cur.fetchall()
+        finally:
+            conn.close()
+    else:
+        with _sqlite_conn() as c:
+            cur = c.execute(sql_sqlite, params)
+            if fetch == "one":
+                return cur.fetchone()
+            if fetch == "all":
+                return cur.fetchall()
+    return None
+
+
+def get_user_by_email(email: str):
+    """Return a user row dict or None."""
+    email = (email or "").strip().lower()
+    row = _q("SELECT id, email, password_hash, created_at, verified, verify_token, verify_expires "
+             "FROM users WHERE email = %s",
+             "SELECT id, email, password_hash, created_at, verified, verify_token, verify_expires "
+             "FROM users WHERE email = ?",
+             (email,), fetch="one")
+    if not row:
+        return None
+    keys = ["id", "email", "password_hash", "created_at", "verified", "verify_token", "verify_expires"]
+    return dict(zip(keys, row))
+
+
+def create_user(email: str, password: str) -> dict:
+    """Create an UNVERIFIED user with a fresh verification token.
+    Returns {ok, error, token, user_id}. Does not send the email (app layer does)."""
+    email = (email or "").strip().lower()
+    if not email or "@" not in email:
+        return {"ok": False, "error": "Please enter a valid email address."}
+    if not password or len(password) < 8:
+        return {"ok": False, "error": "Password must be at least 8 characters."}
+    if get_user_by_email(email):
+        return {"ok": False, "error": "An account with that email already exists."}
+    pw_hash = generate_password_hash(password)
+    token = _secrets.token_urlsafe(32)
+    now = _dt.datetime.now(_dt.timezone.utc)
+    expires = (now + _dt.timedelta(hours=24)).isoformat()
+    _q("INSERT INTO users (email, password_hash, created_at, verified, verify_token, verify_expires) "
+       "VALUES (%s, %s, %s, 0, %s, %s)",
+       "INSERT INTO users (email, password_hash, created_at, verified, verify_token, verify_expires) "
+       "VALUES (?, ?, ?, 0, ?, ?)",
+       (email, pw_hash, now.isoformat(), token, expires))
+    user = get_user_by_email(email)
+    return {"ok": True, "error": None, "token": token,
+            "user_id": user["id"] if user else None}
+
+
+def verify_user_token(token: str) -> dict:
+    """Activate the account matching this verification token (if not expired).
+    Returns {ok, error, email}."""
+    if not token:
+        return {"ok": False, "error": "Missing verification token."}
+    row = _q("SELECT id, email, verify_expires, verified FROM users WHERE verify_token = %s",
+             "SELECT id, email, verify_expires, verified FROM users WHERE verify_token = ?",
+             (token,), fetch="one")
+    if not row:
+        return {"ok": False, "error": "Invalid or already-used verification link."}
+    uid, email, expires, verified = row
+    if verified:
+        return {"ok": True, "error": None, "email": email, "already": True}
+    try:
+        if expires and _dt.datetime.fromisoformat(expires) < _dt.datetime.now(_dt.timezone.utc):
+            return {"ok": False, "error": "This verification link has expired. Please sign up again or resend."}
+    except (ValueError, TypeError):
+        pass
+    _q("UPDATE users SET verified = 1, verify_token = NULL WHERE id = %s",
+       "UPDATE users SET verified = 1, verify_token = NULL WHERE id = ?",
+       (uid,))
+    return {"ok": True, "error": None, "email": email}
+
+
+def set_verify_token(email: str) -> str | None:
+    """Issue a fresh verification token for an existing unverified user
+    (for 'resend verification'). Returns the token or None."""
+    user = get_user_by_email(email)
+    if not user or user["verified"]:
+        return None
+    token = _secrets.token_urlsafe(32)
+    expires = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=24)).isoformat()
+    _q("UPDATE users SET verify_token = %s, verify_expires = %s WHERE id = %s",
+       "UPDATE users SET verify_token = ?, verify_expires = ? WHERE id = ?",
+       (token, expires, user["id"]))
+    return token
+
+
+def check_login(email: str, password: str) -> dict:
+    """Validate credentials. Returns {ok, error, user_id, verified, email}."""
+    user = get_user_by_email(email)
+    if not user or not user.get("password_hash"):
+        return {"ok": False, "error": "No account found with that email."}
+    if not check_password_hash(user["password_hash"], password or ""):
+        return {"ok": False, "error": "Incorrect password."}
+    if not user["verified"]:
+        return {"ok": False, "error": "Please verify your email first — check your inbox.",
+                "unverified": True, "email": user["email"]}
+    return {"ok": True, "error": None, "user_id": user["id"],
+            "verified": True, "email": user["email"]}
