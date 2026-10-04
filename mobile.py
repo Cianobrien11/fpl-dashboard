@@ -61,15 +61,40 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
     squad_names = {m.get("name", "").lower() for m in squad}
     odds = snap.get("odds") or {}
 
-    # --- Captain & vice (works from seed; appeal-ranked squad members) ---
-    try:
-        caps = analytics.captain_picks(rankings, fixtures, squad, gw)
-        if caps:
-            out["captain"] = caps[0]
-            if len(caps) > 1:
-                out["vice"] = caps[1]
-    except Exception:
-        pass
+    # --- Captain & vice ---
+    # When live player data exists, rank the user's OWN squad by real xPts
+    # (the improved form-anchored + fixture + odds model) so captain/vice are
+    # consistent with the rest of the app and both show xPts. Only fall back to
+    # the appeal heuristic when there is no live player data (seed only).
+    if has_live:
+        try:
+            xp_all = analytics.expected_points(players, rankings, fixtures, gw)
+            xp_lookup = {(r.get("name"), r.get("team")): r for r in xp_all}
+            squad_ranked = []
+            for member in squad:
+                hit = xp_lookup.get((member.get("name"), member.get("team")))
+                if not hit:
+                    # match by name only as a fallback
+                    hit = next((r for r in xp_all
+                                if r.get("name", "").lower() == member.get("name", "").lower()), None)
+                if hit:
+                    squad_ranked.append(hit)
+            squad_ranked.sort(key=lambda r: -r.get("xpts", 0))
+            if squad_ranked:
+                out["captain"] = dict(squad_ranked[0])
+                if len(squad_ranked) > 1:
+                    out["vice"] = dict(squad_ranked[1])
+        except Exception:
+            pass
+    if out["captain"] is None:
+        try:
+            caps = analytics.captain_picks(rankings, fixtures, squad, gw)
+            if caps:
+                out["captain"] = caps[0]
+                if len(caps) > 1:
+                    out["vice"] = caps[1]
+        except Exception:
+            pass
 
     # --- Projected GW score + top players (needs live player xPts) ---
     if has_live:
