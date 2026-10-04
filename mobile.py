@@ -327,29 +327,89 @@ def fpl_iq_score(player: dict, xpts: float = 0.0, fix_score: float | None = None
     }
 
 
-def _fixture_score(player, rankings, fixtures, gw):
-    """Real 0-10 fixture-favourability for a player's next fixture.
+def _clean_sheet_prob(opp, venue, market_cs=None):
+    """Estimate clean-sheet probability (0-1) for a team facing `opp`.
 
-    GK/DEF: based on how WEAK the opponent's attack is (clean-sheet friendly).
-    MID/FWD: based on how LEAKY the opponent's defence is (goal friendly).
-    Venue tilts it. 10 = dream fixture, 0 = brutal.
+    Model estimate is driven by the opponent's attacking threat (0-100 attack
+    rating) + venue tilt. When a MARKET clean-sheet probability is supplied
+    (derived from bookmaker odds), we BLEND it in — the market is a sharp,
+    pre-computed consensus, so it anchors the model estimate (60% market /
+    40% model when both exist).
+    """
+    att = opp.get("attack", 50)
+    prob = 0.60 - (att / 100.0) * 0.54
+    prob += 0.05 if venue == "H" else -0.05
+    prob = max(0.04, min(0.65, prob))
+    if market_cs is not None:
+        try:
+            m = float(market_cs)
+            prob = 0.6 * m + 0.4 * prob
+        except (TypeError, ValueError):
+            pass
+    return max(0.04, min(0.70, prob))
+
+
+def _one_fixture_score(player, opp, venue, market=None):
+    """0-10 favourability of a SINGLE fixture for this player's position.
+
+    `market` (optional) is this team's odds record for the fixture:
+    {cs_prob, team_goals_exp, win_prob, ...}. When present it anchors the
+    model-derived score with the bookmaker signal.
+    """
+    pos = player.get("position", "MID")
+    market_cs = market.get("cs_prob") if market else None
+    if pos in ("GK", "DEF"):
+        base = 100 - opp.get("attack", 50)
+        base += 6 if venue == "H" else -6
+        fav = max(0.0, min(100.0, base)) / 10.0
+        cs = _clean_sheet_prob(opp, venue, market_cs) / 0.70 * 10.0
+        return 0.5 * fav + 0.5 * cs
+    else:
+        base = 100 - opp.get("defence", 50)
+        base += 6 if venue == "H" else -6
+        model_s = max(0.0, min(100.0, base)) / 10.0
+        if market and market.get("team_goals_exp") is not None:
+            # More market-expected goals = better attacking fixture.
+            # ~0.6 goals -> ~2/10, ~2.4 goals -> ~9/10.
+            g = float(market["team_goals_exp"])
+            market_s = max(0.0, min(10.0, (g - 0.3) / 2.2 * 10.0))
+            return 0.5 * model_s + 0.5 * market_s
+        return model_s
+
+
+def _fixture_score(player, rankings, fixtures, gw, window=4, odds=None):
+    """Real 0-10 fixture-favourability averaged over the next `window` games.
+
+    Reflects a RUN of fixtures, not just the immediate one, weighting nearer
+    gameweeks more heavily (the next GW matters most, later ones taper). For
+    GK/DEF this now also folds in an explicit clean-sheet-probability term
+    (opponent attack strength -> CS odds); for MID/FWD it uses opponent defence
+    leakiness. Venue tilts each fixture. 10 = dream run, 0 = brutal run.
     """
     team = player.get("team")
-    pos = player.get("position", "MID")
-    fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
-    if not fx or fx["opponent"] not in rankings:
+    upcoming = sorted([f for f in fixtures.get(team, []) if f["gw"] >= gw],
+                      key=lambda f: f["gw"])[:window]
+    if not upcoming:
         return 5.0
-    opp = rankings[fx["opponent"]]
-    venue = fx["venue"]
-    if pos in ("GK", "DEF"):
-        # weak opponent attack = good. attack rating 0-100 (higher=stronger).
-        base = 100 - opp.get("attack", 50)
-    else:
-        # leaky opponent defence = good. defence rating 0-100 (higher=better def).
-        base = 100 - opp.get("defence", 50)
-    # venue tilt: home ~+6, away ~-6 points on the 0-100 scale
-    base += 6 if venue == "H" else -6
-    return round(max(0.0, min(100.0, base)) / 10.0, 1)
+    # Weights: nearest GW heaviest, tapering (e.g. 1.0, 0.7, 0.5, 0.35...)
+    team = player.get("team")
+    team_odds = (odds or {}).get(team)
+    scores, weights = [], []
+    for idx, fx in enumerate(upcoming):
+        if fx["opponent"] not in rankings:
+            continue
+        # Market odds only cover the IMMEDIATE fixture (idx 0) and only if the
+        # stored opponent matches this fixture's opponent.
+        mk = None
+        if idx == 0 and team_odds and team_odds.get("opp") == fx["opponent"]:
+            mk = team_odds
+        s = _one_fixture_score(player, rankings[fx["opponent"]], fx["venue"], mk)
+        w = 0.7 ** idx
+        scores.append(s * w)
+        weights.append(w)
+    if not weights:
+        return 5.0
+    return round(sum(scores) / sum(weights), 1)
 
 
 def _next_fixtures(team, fixtures, gw, n=5):
@@ -371,6 +431,7 @@ def players_payload(snap, players=None, position="ALL", sort="points",
     gw = snap.get("next_gw") or snap.get("current_gw") or 1
 
     has_live = len(players) > 0
+    odds = snap.get("odds") or {}
     xp_by_name = {}
     if has_live:
         try:
@@ -384,7 +445,7 @@ def players_payload(snap, players=None, position="ALL", sort="points",
     out_rows = []
     for pl in rows:
         xp = xp_by_name.get((pl.get("name"), pl.get("team")), 0)
-        fix_s = _fixture_score(pl, rankings, fixtures, gw)
+        fix_s = _fixture_score(pl, rankings, fixtures, gw, odds=odds)
         iq = fpl_iq_score(pl, xp, fix_score=fix_s)
         out_rows.append({
             "name": pl.get("name"), "team": pl.get("team"),

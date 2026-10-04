@@ -72,3 +72,11 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
         run: python fbref_action.py
+
+      - name: Pull bookmaker odds (clean-sheet / goals signals) and post to the app
+        continue-on-error: true
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python odds_action.py

@@ -613,6 +613,35 @@ def ingest_team_stats():
     snap.setdefault("team_stats", {}).update(incoming)
     models.save_snapshot(snap)
     return jsonify({"status": "ok", "received": len(incoming)})
+
+
+@app.route("/ingest/odds", methods=["POST"])
+def ingest_odds():
+    """
+    Receive bookmaker market data from the GitHub Action (The Odds API source).
+
+    Body: {"odds": {team_name: {cs_prob, win_prob, team_goals_exp, opp,
+                                venue, gw, updated}}}
+      cs_prob        market-implied clean-sheet probability (0-1)
+      win_prob       market-implied win probability (0-1)
+      team_goals_exp market-implied expected goals this team scores
+    Stored under snap['odds']; blended into the model (clean-sheet prob,
+    fixture difficulty) alongside the xG-based estimates. Market consensus is a
+    sharp, pre-computed signal (prices in team news / lineups faster than any
+    model), so it anchors our own numbers.
+    """
+    expected = os.environ.get("CRON_TOKEN", "")
+    if not expected or request.args.get("token") != expected:
+        abort(403)
+    payload = request.get_json(silent=True) or {}
+    incoming = payload.get("odds") or {}
+    if not incoming:
+        return jsonify({"status": "error", "reason": "no odds"}), 400
+    snap = _ensure_data()
+    snap["odds"] = incoming
+    snap["odds_updated"] = payload.get("updated")
+    models.save_snapshot(snap)
+    return jsonify({"status": "ok", "received": len(incoming)})
 @app.template_filter("dcls")
 def difficulty_class(d: int) -> str:
     return {0: "fx-g", 1: "fx-y", 2: "fx-r"}.get(d, "fx-y")
