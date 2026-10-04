@@ -4,6 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}FPL Dashboard{% endblock %}</title>
+<script>
+// If launched from the Home Screen icon (standalone) on a phone-sized screen,
+// send the user straight to the mobile app at /app. Runs before render so the
+// desktop dashboard never flashes. Guarded so it only redirects from the root.
+(function () {
+  try {
+    var standalone = window.navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    var isPhone = Math.min(window.innerWidth, window.innerHeight) <= 820;
+    var path = location.pathname.replace(/\/+$/, '') || '/';
+    if (standalone && isPhone && path === '') {
+      location.replace('/app');
+    } else if (standalone && isPhone && path === '/') {
+      location.replace('/app');
+    }
+  } catch (e) { /* ignore */ }
+})();
+</script>
 <!-- PWA / installable app (FPL IQ) -->
 <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
 <meta name="theme-color" content="#38035a">

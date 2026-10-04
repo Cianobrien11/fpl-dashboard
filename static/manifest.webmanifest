@@ -2,11 +2,11 @@
   "name": "FPL IQ",
   "short_name": "FPL IQ",
   "description": "Fantasy Premier League analytics — targets, predictions, captaincy, xPts and more.",
-  "start_url": "/?source=pwa",
+  "start_url": "/app?source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#0f1420",
+  "background_color": "#0b0f1a",
   "theme_color": "#38035a",
   "categories": ["sports", "utilities"],
   "icons": [
