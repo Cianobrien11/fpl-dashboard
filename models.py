@@ -66,18 +66,54 @@ def init_db() -> None:
         # user_id 0 is reserved for the current single-user / anonymous device.
         "CREATE TABLE IF NOT EXISTS user_settings (user_id INTEGER PRIMARY KEY, data TEXT)",
     ]
+    # Idempotent migrations: add columns to a pre-existing users table.
+    # CREATE TABLE IF NOT EXISTS won't alter an existing table, so a users
+    # table created by an earlier (groundwork) deploy would miss the auth
+    # columns. These ALTERs bring it up to date safely.
+    pg_migrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS verified INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_expires TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TEXT",
+    ]
+    # SQLite: ADD COLUMN IF NOT EXISTS isn't supported, so add only if missing.
+    sqlite_cols = {"verified": "INTEGER DEFAULT 0", "verify_token": "TEXT",
+                   "verify_expires": "TEXT", "password_hash": "TEXT",
+                   "created_at": "TEXT"}
+
     if USE_PG:
         conn = _pg_conn()
         try:
+            # Base tables in one transaction.
             with conn, conn.cursor() as cur:
                 for stmt in ddl:
                     cur.execute(stmt)
+            # Each migration in its OWN transaction so one failure can't roll
+            # back the others (ADD COLUMN IF NOT EXISTS is safe to re-run).
+            for stmt in pg_migrations:
+                try:
+                    with conn, conn.cursor() as cur:
+                        cur.execute(stmt)
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
         finally:
             conn.close()
     else:
         with _sqlite_conn() as c:
             for stmt in ddl:
                 c.execute(stmt)
+            # discover existing columns on users, add any missing
+            try:
+                existing = {r[1] for r in c.execute("PRAGMA table_info(users)").fetchall()}
+                for col, decl in sqlite_cols.items():
+                    if col not in existing:
+                        c.execute(f"ALTER TABLE users ADD COLUMN {col} {decl}")
+            except Exception:
+                pass
 
 
 def _upsert(table: str, payload: str) -> None:
