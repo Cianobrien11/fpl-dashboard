@@ -387,12 +387,25 @@ def signup():
         return render_template("m_account.html", tab="settings",
                                gw=_ensure_data().get("next_gw"),
                                error=res["error"], mode="signup", email=email)
-    # Send the verification email (logs to console if no RESEND_API_KEY yet).
-    verify_url = url_for("verify_email", token=res["token"], _external=True)
-    mailer.send_verification_email(email, verify_url)
-    return render_template("m_account.html", tab="settings",
-                           gw=_ensure_data().get("next_gw"),
-                           pending=email)
+    # Email verification is gated behind a toggle. Default OFF for now so
+    # friends can sign up and use the app instantly (no inbox round-trip).
+    # Set REQUIRE_EMAIL_VERIFICATION=1 in Render env once Resend + domain are
+    # ready to re-enable verify-by-email before public launch.
+    require_verify = os.environ.get("REQUIRE_EMAIL_VERIFICATION", "0") == "1"
+    if require_verify:
+        verify_url = url_for("verify_email", token=res["token"], _external=True)
+        mailer.send_verification_email(email, verify_url)
+        return render_template("m_account.html", tab="settings",
+                               gw=_ensure_data().get("next_gw"),
+                               pending=email)
+    # No verification required: activate immediately and log them straight in.
+    try:
+        models.mark_verified(email)
+    except Exception:
+        pass
+    session["uid"] = res.get("user_id")
+    session["uemail"] = email
+    return redirect(url_for("m_settings"))
 
 
 @app.route("/app/verify/<token>")

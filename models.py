@@ -385,6 +385,15 @@ def set_verify_token(email: str) -> str | None:
     return token
 
 
+def mark_verified(email):
+    """Immediately mark a user verified (used when email verification is
+    disabled for testing). Clears any pending token."""
+    email = (email or "").strip().lower()
+    _q("UPDATE users SET verified = 1, verify_token = NULL WHERE email = %s",
+       "UPDATE users SET verified = 1, verify_token = NULL WHERE email = ?",
+       (email,))
+
+
 def check_login(email: str, password: str) -> dict:
     """Validate credentials. Returns {ok, error, user_id, verified, email}."""
     user = get_user_by_email(email)
