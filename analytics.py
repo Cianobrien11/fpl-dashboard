@@ -792,12 +792,23 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
     """
     Project each player's points for a single gameweek (xPts).
 
-    Transparent model combining:
-      * appearance points (minutes security via avg_min / starts)
-      * attacking returns: xGI/90 -> goals+assists, scaled by fixture ease
-      * defensive returns: clean-sheet chance (from fixture) + DefCon points
-      * set-piece bonus: penalty takers get an attacking uplift
-    Not a black box — weights live here and are easy to tune.
+    Two signals are BLENDED so projections stay grounded in reality:
+
+      1. BOTTOM-UP model (opportunity):
+           appearance (minutes security)
+           + attacking returns (xGI/90 -> goals+assists, fixture-scaled)
+           + defensive returns (clean-sheet chance + DefCon)
+           + set-piece bonus
+      2. FORM ANCHOR (actual returns):
+           the player's real points-per-game (FPL ppg) blended with recent
+           form, then adjusted UP for easy fixtures / DOWN for hard ones.
+
+    Final xPts = blend of the two, weighted toward the form anchor for players
+    with a meaningful sample. This stops low-return fringe players (e.g. a
+    rotation midfielder returning ~1/wk) from projecting like nailed starters
+    just because a small xGI sample and a soft fixture lined up.
+
+    Weights live here and are easy to tune.
     """
     league_xga = _league_avg(rankings, "xga")
     league_xg = _league_avg(rankings, "xg")
@@ -821,7 +832,7 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         att_mult = _attack_multiplier(opp, venue, league_xga)
         cs_mult = _cs_multiplier(opp, venue, league_xg)
 
-        # attacking: xGI/90 -> goal involvements, scaled by opponent defence
+        # --- (1) BOTTOM-UP opportunity model ---
         xgi90 = p.get("xgi_pg", 0) or 0
         goal_share = 0.6
         exp_goals = xgi90 * goal_share * att_mult * secure
@@ -832,15 +843,38 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         elif p.get("ck_order") == 1 or p.get("fk_order") == 1:
             att_pts += 0.2 * att_mult
 
-        # defensive: clean-sheet chance scaled by opponent attack strength
         base_cs = 0.30
         cs_prob = max(0.03, min(0.65, base_cs * cs_mult))
         def_pts = cs_prob * _CS_PTS.get(pos, 0) * secure
         if p.get("defcon_pg", 0) >= 10 and pos in ("DEF", "MID"):
             def_pts += 2.0 * secure
 
-        xpts = round(appearance + att_pts + def_pts, 1)
-        # difficulty tier for the chip colour (real, not just home=green)
+        model_xpts = appearance + att_pts + def_pts
+
+        # --- (2) FORM ANCHOR: real points-per-game, fixture-adjusted ---
+        ppg = float(p.get("ppg", 0) or 0)        # season points per appearance
+        form = float(p.get("form", 0) or 0)      # recent (~last 4) points/game
+        ninetys = float(p.get("ninetys", 0) or 0)
+        # Weight recent form a bit more than season ppg when we have both.
+        if ppg and form:
+            base_return = 0.45 * ppg + 0.55 * form
+        else:
+            base_return = form or ppg
+        # Adjust the actual-return baseline by fixture ease. Attackers/mids are
+        # swung by the opponent's defence (att_mult), defenders/keepers by the
+        # opponent's attack (cs_mult). Dampen the swing (0.5) so form stays the
+        # dominant term — a soft fixture lifts it, a tough one trims it.
+        fix_adj = att_mult if pos in ("MID", "FWD") else cs_mult
+        swing = 1.0 + 0.5 * (fix_adj - 1.0)
+        anchor_xpts = base_return * swing * (0.6 + 0.4 * secure)
+
+        # --- Blend: lean on the form anchor once a player has a real sample ---
+        # sample_conf 0..1 grows with minutes played (90s). A player with <~3
+        # full games leans more on the opportunity model (less history to trust).
+        sample_conf = max(0.0, min(1.0, ninetys / 6.0))
+        w_anchor = 0.35 + 0.45 * sample_conf      # 0.35 (tiny sample) .. 0.80
+        xpts = round(w_anchor * anchor_xpts + (1 - w_anchor) * model_xpts, 1)
+
         rel_cat = "gs" if pos in ("MID", "FWD") else "cs"
         d = _difficulty(rel_cat, opp, venue)
         out.append({
@@ -851,6 +885,7 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         })
     out.sort(key=lambda x: -x["xpts"])
     return out
+
 
 
 def price_predictions(players: list) -> dict:
