@@ -447,6 +447,17 @@ def players_payload(snap, players=None, position="ALL", sort="points",
         xp = xp_by_name.get((pl.get("name"), pl.get("team")), 0)
         fix_s = _fixture_score(pl, rankings, fixtures, gw, odds=odds)
         iq = fpl_iq_score(pl, xp, fix_score=fix_s)
+        # Market chip: show the bookmaker signal for this player's next fixture.
+        # GK/DEF -> clean-sheet %, MID/FWD -> team expected goals. Only when the
+        # stored odds opponent matches this player's actual next opponent.
+        mk_chip = None
+        tm_odds = odds.get(pl.get("team"))
+        nxt = next((f for f in fixtures.get(pl.get("team"), []) if f["gw"] == gw), None)
+        if tm_odds and nxt and tm_odds.get("opp") == nxt.get("opponent"):
+            if pl.get("position") in ("GK", "DEF") and tm_odds.get("cs_prob") is not None:
+                mk_chip = {"label": "CS", "value": f"{round(tm_odds['cs_prob']*100)}%"}
+            elif tm_odds.get("team_goals_exp") is not None:
+                mk_chip = {"label": "xG", "value": f"{tm_odds['team_goals_exp']:.1f}"}
         out_rows.append({
             "name": pl.get("name"), "team": pl.get("team"),
             "position": pl.get("position"), "price": pl.get("price", 0),
@@ -454,9 +465,11 @@ def players_payload(snap, players=None, position="ALL", sort="points",
             "ppm": pl.get("ppm", 0), "points": pl.get("points", 0),
             "xpts": round(xp, 1), "iq": iq["overall"], "iq_parts": iq,
             "fixtures": _next_fixtures(pl.get("team"), fixtures, gw, 5),
+            "market": mk_chip,
         })
     return {
         "rows": out_rows, "has_live": has_live, "gw": gw,
+        "has_odds": bool(odds),
         "position": position, "sort": sort, "search": search,
         "positions": ["ALL", "GK", "DEF", "MID", "FWD"],
         "sorts": [("points", "Points"), ("xpts", "xPts"), ("form", "Form"),

@@ -23,6 +23,11 @@
   .iq{margin-left:auto;text-align:center}
   .iq .v{font-size:20px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1}
   .iq .k{font-size:8.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+  .mkt{display:inline-flex;flex-direction:column;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:5px 9px;margin-left:8px}
+  .mkt .v{font-size:14px;font-weight:900;color:#fbbf24;font-variant-numeric:tabular-nums;line-height:1}
+  .mkt .k{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+  .odds-note{font-size:11px;color:var(--muted);text-align:center;margin:0 0 10px;display:flex;align-items:center;justify-content:center;gap:6px}
+  .odds-note .dot{width:7px;height:7px;border-radius:50%;background:#fbbf24;display:inline-block}
 
   .pstats{display:flex;gap:4px;margin-top:11px}
   .ps{flex:1;background:var(--bg);border-radius:8px;padding:6px 2px;text-align:center}
@@ -65,6 +70,8 @@
   </div>
 </form>
 
+{% if has_odds %}<div class="odds-note"><span class="dot"></span> Market odds live — CS% (keepers/defenders) &amp; xG (attackers) from bookmakers</div>{% endif %}
+
 {% if rows %}
   {% for p in rows %}
   <div class="pcard">
@@ -74,6 +81,12 @@
         <div class="pname">{{ p.name }}</div>
         <div class="pteam">{{ p.team }} · £{{ '%.1f'|format(p.price) }}m</div>
       </div>
+      {% if p.market %}
+      <div class="mkt" title="Bookmaker market signal">
+        <div class="v">{{ p.market.value }}</div>
+        <div class="k">{{ p.market.label }}</div>
+      </div>
+      {% endif %}
       <div class="iq">
         <div class="v">{{ p.iq }}</div>
         <div class="k">FPL IQ</div>
