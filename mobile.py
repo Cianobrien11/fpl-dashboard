@@ -281,31 +281,75 @@ def _norm(v, lo, hi):
     return max(0.0, min(1.0, (v - lo) / (hi - lo)))
 
 
-def fpl_iq_score(player: dict, xpts: float = 0.0) -> dict:
+def fpl_iq_score(player: dict, xpts: float = 0.0, fix_score: float | None = None) -> dict:
     """Return {overall, form, fixtures, xpts, value, minutes, ownership}
-    each on a 0-10 scale. Transparent — weights live right here."""
-    form = float(player.get("form", 0) or 0)                 # ~0-10 already
-    ppm = float(player.get("ppm", 0) or 0)                    # points per million
+    each on a 0-10 scale. Transparent — weights live right here.
+
+    `fix_score` is a REAL 0-10 fixture-favourability score for THIS player's
+    next opponent (computed in players_payload from the opponent's attack/
+    defence ratings + venue, position-appropriate). When it's None we fall
+    back to the xPts proxy, but the caller should always supply it.
+
+    Weighting is POSITION-AWARE: a goalkeeper/defender's rating leans on the
+    fixture (clean-sheet chance vs the opponent's attack), while a mid/forward
+    leans more on xPts/form. This is why a keeper facing a top attack (e.g.
+    Alisson vs Man City) is now correctly marked down on fixtures.
+    """
+    pos = player.get("position", "MID")
+    form = float(player.get("form", 0) or 0)
+    ppm = float(player.get("ppm", 0) or 0)
     mins = float(player.get("minutes", 0) or 0)
     avg_min = float(player.get("avg_min", 0) or 0)
     own = float(player.get("selected_by", 0) or 0)
 
     s_form = _norm(form, 0, 8) * 10
-    s_fix = _norm(xpts, 0, 8) * 10            # fixture-adjusted projection
+    s_fix = fix_score if fix_score is not None else _norm(xpts, 0, 8) * 10
     s_xpts = _norm(xpts, 0, 9) * 10
     s_value = _norm(ppm, 0, 10) * 10
     s_mins = _norm(avg_min if avg_min else mins / 3.0, 0, 90) * 10
-    s_own = (1 - _norm(own, 0, 50)) * 10      # lower ownership = higher differential appeal
+    s_own = (1 - _norm(own, 0, 50)) * 10
+
+    # Position-aware weights. GK/DEF are clean-sheet assets -> fixture matters
+    # most; MID/FWD are returns assets -> xPts/form matter most.
+    if pos in ("GK", "DEF"):
+        w = {"xpts": 0.20, "fix": 0.38, "form": 0.14, "value": 0.12, "mins": 0.16}
+    else:
+        w = {"xpts": 0.30, "fix": 0.22, "form": 0.21, "value": 0.13, "mins": 0.14}
 
     overall = round(
-        0.28 * s_xpts + 0.22 * s_fix + 0.20 * s_form +
-        0.15 * s_value + 0.15 * s_mins, 1)
+        w["xpts"] * s_xpts + w["fix"] * s_fix + w["form"] * s_form +
+        w["value"] * s_value + w["mins"] * s_mins, 1)
     return {
         "overall": overall,
         "form": round(s_form, 1), "fixtures": round(s_fix, 1),
         "xpts": round(s_xpts, 1), "value": round(s_value, 1),
         "minutes": round(s_mins, 1), "ownership": round(s_own, 1),
     }
+
+
+def _fixture_score(player, rankings, fixtures, gw):
+    """Real 0-10 fixture-favourability for a player's next fixture.
+
+    GK/DEF: based on how WEAK the opponent's attack is (clean-sheet friendly).
+    MID/FWD: based on how LEAKY the opponent's defence is (goal friendly).
+    Venue tilts it. 10 = dream fixture, 0 = brutal.
+    """
+    team = player.get("team")
+    pos = player.get("position", "MID")
+    fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
+    if not fx or fx["opponent"] not in rankings:
+        return 5.0
+    opp = rankings[fx["opponent"]]
+    venue = fx["venue"]
+    if pos in ("GK", "DEF"):
+        # weak opponent attack = good. attack rating 0-100 (higher=stronger).
+        base = 100 - opp.get("attack", 50)
+    else:
+        # leaky opponent defence = good. defence rating 0-100 (higher=better def).
+        base = 100 - opp.get("defence", 50)
+    # venue tilt: home ~+6, away ~-6 points on the 0-100 scale
+    base += 6 if venue == "H" else -6
+    return round(max(0.0, min(100.0, base)) / 10.0, 1)
 
 
 def _next_fixtures(team, fixtures, gw, n=5):
@@ -340,7 +384,8 @@ def players_payload(snap, players=None, position="ALL", sort="points",
     out_rows = []
     for pl in rows:
         xp = xp_by_name.get((pl.get("name"), pl.get("team")), 0)
-        iq = fpl_iq_score(pl, xp)
+        fix_s = _fixture_score(pl, rankings, fixtures, gw)
+        iq = fpl_iq_score(pl, xp, fix_score=fix_s)
         out_rows.append({
             "name": pl.get("name"), "team": pl.get("team"),
             "position": pl.get("position"), "price": pl.get("price", 0),
