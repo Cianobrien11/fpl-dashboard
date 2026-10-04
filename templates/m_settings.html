@@ -1,0 +1,120 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Settings{% endblock %}
+{% block content %}
+<style>
+  .set-group{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 14px;margin-bottom:14px}
+  .set-row{padding:14px 2px;border-bottom:1px solid var(--border)}
+  .set-row:last-child{border-bottom:none}
+  .set-row label{display:block;font-size:13px;font-weight:800;margin-bottom:3px}
+  .set-row .hint{font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.4}
+  .set-row input[type=text], .set-row input[type=number], .set-row select{
+    width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);
+    border-radius:10px;padding:11px 13px;font-size:15px}
+  .range2{display:flex;gap:10px}
+  .range2 > div{flex:1}
+  .switch{position:relative;display:inline-block;width:46px;height:26px;float:right}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;cursor:pointer;inset:0;background:var(--border);border-radius:26px;transition:.2s}
+  .slider:before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+  input:checked+.slider{background:var(--accent)}
+  input:checked+.slider:before{transform:translateX(20px)}
+  .theme-opts{display:flex;gap:8px}
+  .theme-opts label{flex:1;text-align:center;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;color:var(--muted)}
+  .theme-opts input{display:none}
+  .theme-opts input:checked+span{color:var(--accent)}
+  .theme-opts label:has(input:checked){border-color:var(--accent);background:var(--surface2)}
+  .save-btn{display:block;width:100%;background:var(--accent);color:#06130d;font-weight:900;font-size:16px;padding:15px;border-radius:12px;border:none;margin-top:4px}
+  .saved-toast{background:var(--easy-bg);color:var(--easy);text-align:center;padding:11px;border-radius:10px;font-size:13px;font-weight:700;margin-bottom:12px}
+  .acct-link{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,var(--p1),var(--p2));border-radius:14px;padding:15px;margin-bottom:14px;text-decoration:none}
+  .acct-link .ic{font-size:24px}
+  .acct-link .t{font-size:15px;font-weight:800;color:#fff}
+  .acct-link .d{font-size:11px;color:rgba(255,255,255,.85);margin-top:1px}
+  .acct-link .arrow{margin-left:auto;color:#fff;font-size:20px}
+</style>
+
+<div class="sec-label">Settings</div>
+
+{% if saved %}<div class="saved-toast">✓ Settings saved</div>{% endif %}
+
+<a class="acct-link" href="{{ url_for('m_account') }}">
+  <div class="ic">👤</div>
+  <div><div class="t">My Account</div><div class="d">Sign in or create an account</div></div>
+  <div class="arrow">→</div>
+</a>
+
+<form method="post" action="{{ url_for('m_settings') }}" id="settingsForm">
+  <div class="set-group">
+    <div class="set-row">
+      <label>FPL Team ID</label>
+      <div class="hint">Save your Team ID so My Team loads automatically. Find it in the FPL app under Points — the number in the URL.</div>
+      <input type="number" name="team_id" inputmode="numeric" placeholder="e.g. 1234567" value="{{ settings.team_id or '' }}">
+    </div>
+    <div class="set-row">
+      <label>Favourite team</label>
+      <div class="hint">Highlighted across the app.</div>
+      <select name="fav_team">
+        <option value="">None</option>
+        {% for t in teams %}<option value="{{ t }}" {{ 'selected' if settings.fav_team==t }}>{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="set-row">
+      <label>Default planner range</label>
+      <div class="hint">The gameweek window the Planner opens with.</div>
+      <div class="range2">
+        <div>
+          <select name="gw_from">
+            {% for g in range(next_gw, 39) %}<option value="{{ g }}" {{ 'selected' if (settings.gw_from|string)==(g|string) }}>GW{{ g }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <select name="gw_to">
+            {% for g in range(next_gw, 39) %}<option value="{{ g }}" {{ 'selected' if (settings.gw_to|string)==(g|string) }}>GW{{ g }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="set-row">
+      <label>Show market odds <span class="switch"><input type="checkbox" name="show_odds" {{ 'checked' if settings.show_odds or settings.show_odds is not defined }}><span class="slider"></span></span></label>
+      <div class="hint">Display bookmaker CS% / xG chips on player cards.</div>
+    </div>
+    <div class="set-row">
+      <label>Theme</label>
+      <div class="hint">App colour scheme.</div>
+      <div class="theme-opts">
+        <label><input type="radio" name="theme" value="dark" {{ 'checked' if (settings.theme or 'dark')=='dark' }}><span>Dark</span></label>
+        <label><input type="radio" name="theme" value="midnight" {{ 'checked' if settings.theme=='midnight' }}><span>Midnight</span></label>
+        <label><input type="radio" name="theme" value="purple" {{ 'checked' if settings.theme=='purple' }}><span>Purple</span></label>
+      </div>
+    </div>
+  </div>
+  <button type="submit" class="save-btn">Save settings</button>
+</form>
+
+<script>
+// Mirror settings to localStorage on save so they're instant & offline-capable.
+(function () {
+  var form = document.getElementById('settingsForm');
+  if (!form) return;
+  // Prefill from localStorage if server had nothing
+  try {
+    var ls = JSON.parse(localStorage.getItem('fpliq_settings') || '{}');
+    for (var k in ls) {
+      var el = form.elements[k];
+      if (!el) continue;
+      if (el.type === 'checkbox') { if (!el.defaultChecked) el.checked = !!ls[k]; }
+      else if (el.value === '' && ls[k]) { el.value = ls[k]; }
+    }
+  } catch (e) {}
+  form.addEventListener('submit', function () {
+    try {
+      var data = {};
+      ['team_id','fav_team','gw_from','gw_to','theme'].forEach(function (k) {
+        if (form.elements[k]) data[k] = form.elements[k].value;
+      });
+      data.show_odds = form.elements['show_odds'] ? form.elements['show_odds'].checked : true;
+      localStorage.setItem('fpliq_settings', JSON.stringify(data));
+    } catch (e) {}
+  });
+})();
+</script>
+{% endblock %}

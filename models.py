@@ -57,6 +57,13 @@ def init_db() -> None:
         "CREATE TABLE IF NOT EXISTS squad (id INTEGER PRIMARY KEY, data TEXT)",
         f"CREATE TABLE IF NOT EXISTS predictions_log (id {pk}, gw INTEGER, "
         "logged_at TEXT, data TEXT)",
+        # --- account groundwork (ready for Phase B multi-user auth) ---
+        # users: one row per account. password_hash stays NULL until auth ships.
+        f"CREATE TABLE IF NOT EXISTS users (id {pk}, email TEXT UNIQUE, "
+        "password_hash TEXT, created_at TEXT)",
+        # user_settings: per-user JSON blob (team id, favourite team, prefs).
+        # user_id 0 is reserved for the current single-user / anonymous device.
+        "CREATE TABLE IF NOT EXISTS user_settings (user_id INTEGER PRIMARY KEY, data TEXT)",
     ]
     if USE_PG:
         conn = _pg_conn()
@@ -180,3 +187,51 @@ def load_prediction_logs() -> list:
             for r in c.execute("SELECT gw, logged_at, data FROM predictions_log ORDER BY gw").fetchall():
                 rows.append({"gw": r["gw"], "logged_at": r["logged_at"], "preds": json.loads(r["data"])})
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Settings (account groundwork). For now a single row (user_id=0 = this device)
+# so the Settings page persists server-side too; multi-user auth later keys by
+# the real user id.
+# ---------------------------------------------------------------------------
+def save_settings(data: dict, user_id: int = 0) -> None:
+    init_db()
+    payload = json.dumps(data)
+    ph = "%s" if USE_PG else "?"
+    if USE_PG:
+        conn = _pg_conn()
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute("DELETE FROM user_settings WHERE user_id = %s", (user_id,))
+                cur.execute("INSERT INTO user_settings (user_id, data) VALUES (%s, %s)",
+                            (user_id, payload))
+        finally:
+            conn.close()
+    else:
+        with _sqlite_conn() as c:
+            c.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,))
+            c.execute("INSERT INTO user_settings (user_id, data) VALUES (?, ?)",
+                      (user_id, payload))
+
+
+def load_settings(user_id: int = 0) -> dict:
+    init_db()
+    ph = "%s" if USE_PG else "?"
+    if USE_PG:
+        conn = _pg_conn()
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute("SELECT data FROM user_settings WHERE user_id = %s", (user_id,))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+    else:
+        with _sqlite_conn() as c:
+            cur = c.execute("SELECT data FROM user_settings WHERE user_id = ?", (user_id,))
+            row = cur.fetchone()
+    if row and row[0]:
+        try:
+            return json.loads(row[0])
+        except (ValueError, TypeError):
+            return {}
+    return {}

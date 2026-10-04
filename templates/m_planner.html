@@ -57,6 +57,15 @@
   .grid-legend span{display:inline-flex;align-items:center;gap:4px}
   .dot{width:9px;height:9px;border-radius:3px;display:inline-block}
   .dot.easy{background:var(--easy)}.dot.mid{background:var(--mid)}.dot.hard{background:var(--hard)}
+
+  .ac-list{position:absolute;top:100%;left:0;right:0;z-index:30;background:var(--surface2);border:1px solid var(--border);border-radius:0 0 10px 10px;max-height:220px;overflow-y:auto;display:none;margin-top:2px}
+  .ac-item{padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px}
+  .ac-item:last-child{border-bottom:none}
+  .ac-item:active,.ac-item:hover{background:var(--accent);color:#06130d}
+  .ac-tm{margin-left:auto;font-size:10px;color:var(--muted);font-weight:600}
+  .ac-item:hover .ac-tm{color:#06130d}
+  .ac-pos{font-size:8px;font-weight:800;padding:2px 5px;border-radius:4px;color:#fff}
+  .ac-GK{background:#b45309}.ac-DEF{background:#2b6cb0}.ac-MID{background:#15803d}.ac-FWD{background:#9d174d}
 </style>
 
 <div class="sec-label">Planner</div>
@@ -141,11 +150,48 @@
     <input type="hidden" name="from" value="{{ gw_from }}">
     <input type="hidden" name="to" value="{{ gw_to }}">
     <div class="sim-inputs">
-      <input type="text" name="a" value="{{ sim_a }}" placeholder="Player A (e.g. Palmer)">
-      <input type="text" name="b" value="{{ sim_b }}" placeholder="Player B (e.g. Saka)">
+      <div class="ac" style="flex:1;position:relative">
+        <input type="text" name="a" value="{{ sim_a }}" placeholder="Player A — type to search" autocomplete="off" oninput="acFilter(this)" onfocus="acFilter(this)">
+        <div class="ac-list"></div>
+      </div>
+      <div class="ac" style="flex:1;position:relative">
+        <input type="text" name="b" value="{{ sim_b }}" placeholder="Player B — type to search" autocomplete="off" oninput="acFilter(this)" onfocus="acFilter(this)">
+        <div class="ac-list"></div>
+      </div>
     </div>
     <button type="submit" class="btn-accent">Compare</button>
   </form>
+
+  <script>
+    // Player pool for the search dropdowns (substring match, mobile-friendly).
+    var FPL_PLAYERS = [
+      {% for pl in all_players %}{"n":{{ pl.name|tojson }},"t":{{ pl.team|tojson }},"p":{{ pl.pos|tojson }}}{{ "," if not loop.last }}{% endfor %}
+    ];
+    function acFilter(input) {
+      var q = input.value.trim().toLowerCase();
+      var box = input.parentElement.querySelector('.ac-list');
+      if (!q) { box.style.display='none'; box.innerHTML=''; return; }
+      var hits = FPL_PLAYERS.filter(function(p){ return p.n.toLowerCase().indexOf(q) !== -1; }).slice(0,8);
+      if (!hits.length) { box.style.display='none'; return; }
+      box.innerHTML = hits.map(function(p){
+        return '<div class="ac-item" data-n="'+p.n.replace(/"/g,'&quot;')+'">'
+             + '<span class="ac-pos ac-'+p.p+'">'+p.p+'</span>'+p.n+' <span class="ac-tm">'+p.t+'</span></div>';
+      }).join('');
+      box.style.display='block';
+      Array.prototype.forEach.call(box.querySelectorAll('.ac-item'), function(el){
+        el.addEventListener('mousedown', function(e){
+          e.preventDefault();
+          input.value = el.getAttribute('data-n');
+          box.style.display='none';
+        });
+      });
+    }
+    document.addEventListener('click', function(e){
+      if (!e.target.closest('.ac')) {
+        Array.prototype.forEach.call(document.querySelectorAll('.ac-list'), function(b){ b.style.display='none'; });
+      }
+    });
+  </script>
 
   {% if sim %}
   <div class="sim-vs">

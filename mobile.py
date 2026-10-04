@@ -546,14 +546,14 @@ def _next_fixtures(team, fixtures, gw, n=5):
 
 
 def players_payload(snap, players=None, position="ALL", sort="points",
-                    search="", limit=40):
+                    search="", limit=40, show_odds=True):
     players = players or snap.get("players", []) or []
     fixtures = snap.get("fixtures", {})
     rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
     gw = snap.get("next_gw") or snap.get("current_gw") or 1
 
     has_live = len(players) > 0
-    odds = snap.get("odds") or {}
+    odds = (snap.get("odds") or {}) if show_odds else {}
     xp_by_name = {}
     if has_live:
         try:
@@ -638,10 +638,20 @@ def planner_payload(snap, players=None, gw_from=None, gw_to=None,
             sim = {"a": a, "b": b, "diff": diff}
 
     gws = list(range(gw_from, gw_to + 1))
+    # Player name list for the transfer-simulator search dropdown (datalist).
+    # Dedupe, keep those with meaningful minutes, sort alphabetically.
+    seen = set()
+    all_players = []
+    for pl in sorted(players, key=lambda r: r.get("name", "")):
+        nm = pl.get("name")
+        if nm and nm.lower() not in seen and (pl.get("minutes", 0) or 0) > 0:
+            seen.add(nm.lower())
+            all_players.append({"name": nm, "team": pl.get("team", ""),
+                                "pos": pl.get("position", "")})
     return {
         "has_live": has_live, "gw_from": gw_from, "gw_to": gw_to,
         "next_gw": next_gw, "gws": gws, "targets": targets, "sim": sim,
-        "sim_a": sim_a, "sim_b": sim_b,
+        "sim_a": sim_a, "sim_b": sim_b, "all_players": all_players,
     }
 
 

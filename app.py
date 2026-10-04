@@ -31,6 +31,17 @@ except NameError:
     BASE = os.path.join(os.environ.get("WORKSPACE_DIR", "."), "artifacts", "fpl_dashboard")
 SEED = os.path.join(BASE, "seed_data.json")
 
+
+@app.context_processor
+def inject_settings():
+    """Make saved settings available to EVERY template as `app_settings`,
+    so theme + odds visibility apply app-wide without each route passing them."""
+    try:
+        s = models.load_settings()
+    except Exception:
+        s = {}
+    return {"app_settings": s or {}}
+
 GW_FROM_DEFAULT = 4
 GW_TO_DEFAULT = 11
 
@@ -203,12 +214,18 @@ def m_home():
 def m_players():
     snap = _ensure_data()
     players = _players(snap)
+    _s = {}
+    try:
+        _s = models.load_settings() or {}
+    except Exception:
+        _s = {}
+    show_odds = _s.get("show_odds", True)
     data = mobile.players_payload(
         snap, players,
         position=request.args.get("position", "ALL"),
         sort=request.args.get("sort", "points"),
         search=request.args.get("q", "").strip(),
-        limit=40)
+        limit=40, show_odds=show_odds)
     return render_template("m_players.html", tab="players", **data)
 
 
@@ -218,6 +235,13 @@ def m_planner():
     players = _players(snap)
     gw_from = request.args.get("from")
     gw_to = request.args.get("to")
+    if not gw_from or not gw_to:
+        try:
+            _s = models.load_settings() or {}
+            gw_from = gw_from or (_s.get("gw_from") or None)
+            gw_to = gw_to or (_s.get("gw_to") or None)
+        except Exception:
+            pass
     data = mobile.planner_payload(
         snap, players, gw_from=gw_from, gw_to=gw_to,
         sim_a=request.args.get("a", "").strip(),
@@ -233,8 +257,15 @@ def m_team():
     players = _players(snap)
     imported = None
     team_id = request.values.get("team_id", "").strip()
-
-    if request.method == "POST" and team_id:
+    # Auto-load the saved Team ID on a plain GET (so My Team fills itself in).
+    auto = False
+    if not team_id and request.method == "GET":
+        try:
+            team_id = str((models.load_settings() or {}).get("team_id", "") or "").strip()
+            auto = bool(team_id)
+        except Exception:
+            team_id = ""
+    if (request.method == "POST" or auto) and team_id:
         try:
             imported = scraper.import_fpl_team(int(team_id))
         except ValueError:
@@ -288,6 +319,42 @@ def m_ask():
     q = request.args.get("q", "").strip()
     result = mobile.ask_fpl_iq(q, snap, players=players) if q else None
     return render_template("m_ask.html", tab="analytics", q=q, result=result,
+                           gw=snap.get("next_gw"))
+
+
+@app.route("/app/settings", methods=["GET", "POST"])
+def m_settings():
+    snap = _ensure_data()
+    if request.method == "POST":
+        # Persist settings server-side too (groundwork for per-user accounts).
+        settings = {
+            "team_id": request.form.get("team_id", "").strip(),
+            "fav_team": request.form.get("fav_team", "").strip(),
+            "gw_from": request.form.get("gw_from", "").strip(),
+            "gw_to": request.form.get("gw_to", "").strip(),
+            "show_odds": request.form.get("show_odds") == "on",
+            "theme": request.form.get("theme", "dark").strip(),
+        }
+        try:
+            models.save_settings(settings)
+        except Exception:
+            pass
+        return redirect(url_for("m_settings", saved=1))
+    try:
+        settings = models.load_settings()
+    except Exception:
+        settings = {}
+    return render_template("m_settings.html", tab="settings",
+                           gw=snap.get("next_gw"), settings=settings,
+                           teams=analytics.CANONICAL_TEAMS,
+                           next_gw=snap.get("next_gw") or 1,
+                           saved=request.args.get("saved") == "1")
+
+
+@app.route("/app/account")
+def m_account():
+    snap = _ensure_data()
+    return render_template("m_account.html", tab="settings",
                            gw=snap.get("next_gw"))
 
 
