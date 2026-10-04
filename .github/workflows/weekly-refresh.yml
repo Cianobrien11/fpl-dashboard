@@ -79,4 +79,6 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-        run: python odds_action.py
+        run: |
+          python odds_action.py || echo "::warning::Odds step had a non-fatal issue; continuing."
+          exit 0

@@ -59,6 +59,7 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
     }
 
     squad_names = {m.get("name", "").lower() for m in squad}
+    odds = snap.get("odds") or {}
 
     # --- Captain & vice (works from seed; appeal-ranked squad members) ---
     try:
@@ -82,11 +83,15 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
             xp_name = {p.get("name", "").lower(): p.get("xpts", 0) for p in xp}
             if out["captain"]:
                 out["captain"]["xpts"] = round(xp_name.get(out["captain"]["name"].lower(), 0), 1)
+                out["captain"]["market"] = _market_chip_for(out["captain"], odds, fixtures, gw)
             if out["vice"]:
                 out["vice"]["xpts"] = round(xp_name.get(out["vice"]["name"].lower(), 0), 1)
+                out["vice"]["market"] = _market_chip_for(out["vice"], odds, fixtures, gw)
 
             # Best opportunities = top xPts players NOT already owned
             opps = [p for p in xp_sorted if p.get("name", "").lower() not in squad_names]
+            for o in opps[:5]:
+                o["market"] = _market_chip_for(o, odds, fixtures, gw)
             out["opportunities"] = opps[:5]
 
             # Projected score = sum of xPts for the user's starting XI if we can
@@ -229,9 +234,11 @@ def team_payload(snap: dict, imported: dict | None = None,
     projected = 0.0
     have_proj = bool(xp_by_el or xp_by_name)
 
+    odds = snap.get("odds") or {}
     for m in squad:
         xpts = _xp(m)
         m = {**m, "xpts": round(xpts, 1)}
+        m["market"] = _market_chip_for(m, odds, fixtures, gw)
         is_bench = m.get("is_bench", False)
         if out["imported"]:
             if is_bench:
@@ -410,6 +417,25 @@ def _fixture_score(player, rankings, fixtures, gw, window=4, odds=None):
     if not weights:
         return 5.0
     return round(sum(scores) / sum(weights), 1)
+
+
+def _market_chip_for(player, odds, fixtures, gw):
+    """Return a market chip {label, value} for a player's next fixture, or None.
+    GK/DEF -> clean-sheet %, others -> team expected goals. Only when the stored
+    odds opponent matches the player's actual next opponent."""
+    if not odds:
+        return None
+    team = player.get("team")
+    tm = odds.get(team)
+    nxt = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
+    if not (tm and nxt and tm.get("opp") == nxt.get("opponent")):
+        return None
+    pos = player.get("position")
+    if pos in ("GK", "DEF") and tm.get("cs_prob") is not None:
+        return {"label": "CS", "value": f"{round(tm['cs_prob']*100)}%"}
+    if tm.get("team_goals_exp") is not None:
+        return {"label": "mkt xG", "value": f"{tm['team_goals_exp']:.1f}"}
+    return None
 
 
 def _next_fixtures(team, fixtures, gw, n=5):

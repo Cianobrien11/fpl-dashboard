@@ -98,6 +98,7 @@
       <div class="pn">{{ m.name }}</div>
       <div class="pmeta">{{ m.team }}</div>
       {% if m.xpts %}<div class="pxp">{{ '%.1f'|format(m.xpts) }}</div>{% endif %}
+      {% if m.market %}<div style="font-size:8px;font-weight:800;color:#8a6a10;background:#fde68a;border-radius:4px;padding:1px 4px;margin-top:3px;display:inline-block">{{ m.market.value }}</div>{% endif %}
     </div>
   {% endmacro %}
   <div class="prow">{% for m in gk %}{{ pcard(m) }}{% endfor %}</div>

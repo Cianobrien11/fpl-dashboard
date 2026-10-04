@@ -76,6 +76,7 @@
     <div class="nm">{{ captain.name }}</div>
     <div class="meta">{{ captain.team }} · {{ captain.opponent }} ({{ captain.venue }})</div>
     <div class="xp">{{ captain.xpts if captain.xpts is defined and captain.xpts else captain.appeal }}<small>{{ 'xPts' if captain.xpts is defined and captain.xpts else 'appeal' }}</small></div>
+    {% if captain.market %}<div style="font-size:10px;color:#fbbf24;font-weight:800;margin-top:3px">{{ captain.market.label }} {{ captain.market.value }}</div>{% endif %}
   </div>
   {% if vice %}
   <div class="cvcard">
@@ -83,6 +84,7 @@
     <div class="nm">{{ vice.name }}</div>
     <div class="meta">{{ vice.team }} · {{ vice.opponent }} ({{ vice.venue }})</div>
     <div class="xp" style="color:var(--text)">{{ vice.xpts if vice.xpts is defined and vice.xpts else vice.appeal }}<small>{{ 'xPts' if vice.xpts is defined and vice.xpts else 'appeal' }}</small></div>
+    {% if vice.market %}<div style="font-size:10px;color:#fbbf24;font-weight:800;margin-top:3px">{{ vice.market.label }} {{ vice.market.value }}</div>{% endif %}
   </div>
   {% endif %}
 </div>
@@ -112,7 +114,7 @@
     <tr><th>Player</th><th style="text-align:right">xPts</th><th style="text-align:right">Owned</th></tr>
     {% for o in opportunities %}
     <tr>
-      <td><span class="opp-pos op-{{ o.position }}">{{ o.position }}</span><span class="opp-nm">{{ o.name }}</span> <span class="opp-tm">{{ o.team }}</span></td>
+      <td><span class="opp-pos op-{{ o.position }}">{{ o.position }}</span><span class="opp-nm">{{ o.name }}</span> <span class="opp-tm">{{ o.team }}{% if o.market %} · <span style="color:#fbbf24;font-weight:700">{{ o.market.label }} {{ o.market.value }}</span>{% endif %}</span></td>
       <td class="opp-xp">{{ '%.1f'|format(o.xpts) }}</td>
       <td class="opp-own">{{ '%.1f'|format(o.selected_by|default(0)) }}%</td>
     </tr>
