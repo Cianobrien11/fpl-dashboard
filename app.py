@@ -42,7 +42,7 @@ def inject_settings():
     (as `app_settings` and `current_user`), so theme/odds and account state
     apply app-wide without each route passing them."""
     try:
-        s = models.load_settings()
+        s = models.load_settings(_uid())
     except Exception:
         s = {}
     try:
@@ -225,7 +225,7 @@ def m_players():
     players = _players(snap)
     _s = {}
     try:
-        _s = models.load_settings() or {}
+        _s = models.load_settings(_uid()) or {}
     except Exception:
         _s = {}
     show_odds = _s.get("show_odds", True)
@@ -246,7 +246,7 @@ def m_planner():
     gw_to = request.args.get("to")
     if not gw_from or not gw_to:
         try:
-            _s = models.load_settings() or {}
+            _s = models.load_settings(_uid()) or {}
             gw_from = gw_from or (_s.get("gw_from") or None)
             gw_to = gw_to or (_s.get("gw_to") or None)
         except Exception:
@@ -270,7 +270,7 @@ def m_team():
     auto = False
     if not team_id and request.method == "GET":
         try:
-            team_id = str((models.load_settings() or {}).get("team_id", "") or "").strip()
+            team_id = str((models.load_settings(_uid()) or {}).get("team_id", "") or "").strip()
             auto = bool(team_id)
         except Exception:
             team_id = ""
@@ -289,10 +289,19 @@ def m_team():
                          "is_bench": m.get("is_bench", False),
                          "multiplier": m.get("multiplier", 1)}
                         for m in imported.get("squad", [])]
-                models.save_squad(slim)
+                models.save_squad(slim, _uid())
             except Exception:
                 pass
 
+    # When logged in, show THIS user's saved squad (not the shared seed squad).
+    uid = _uid()
+    if uid and not imported:
+        try:
+            user_squad = models.load_squad(uid)
+            if user_squad:
+                snap = {**snap, "squad": user_squad}
+        except Exception:
+            pass
     data = mobile.team_payload(snap, imported=imported, players=players)
     return render_template("m_team.html", tab="team", team_id=team_id, **data)
 
@@ -345,12 +354,12 @@ def m_settings():
             "theme": request.form.get("theme", "dark").strip(),
         }
         try:
-            models.save_settings(settings)
+            models.save_settings(settings, _uid())
         except Exception:
             pass
         return redirect(url_for("m_settings", saved=1))
     try:
-        settings = models.load_settings()
+        settings = models.load_settings(_uid())
     except Exception:
         settings = {}
     return render_template("m_settings.html", tab="settings",
@@ -376,6 +385,14 @@ def current_user():
     if not uid:
         return None
     return {"id": uid, "email": session.get("uemail")}
+
+
+def _uid() -> int:
+    """Logged-in user's id, or 0 for the shared/anonymous device row."""
+    try:
+        return int(session.get("uid") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 @app.route("/app/signup", methods=["POST"])

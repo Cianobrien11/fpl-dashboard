@@ -65,6 +65,8 @@ def init_db() -> None:
         # user_settings: per-user JSON blob (team id, favourite team, prefs).
         # user_id 0 is reserved for the current single-user / anonymous device.
         "CREATE TABLE IF NOT EXISTS user_settings (user_id INTEGER PRIMARY KEY, data TEXT)",
+        # per-user saved squad (user_id 0 = shared/anonymous device squad).
+        "CREATE TABLE IF NOT EXISTS user_squads (user_id INTEGER PRIMARY KEY, data TEXT)",
     ]
     # Idempotent migrations: add columns to a pre-existing users table.
     # CREATE TABLE IF NOT EXISTS won't alter an existing table, so a users
@@ -166,13 +168,40 @@ def load_snapshot() -> dict | None:
     return snap
 
 
-def save_squad(squad: list[dict]) -> None:
+def save_squad(squad: list[dict], user_id: int = 0) -> None:
     init_db()
-    _upsert("squad", json.dumps(squad))
+    payload = json.dumps(squad)
+    if user_id and user_id > 0:
+        if USE_PG:
+            conn = _pg_conn()
+            try:
+                with conn, conn.cursor() as cur:
+                    cur.execute("DELETE FROM user_squads WHERE user_id = %s", (user_id,))
+                    cur.execute("INSERT INTO user_squads (user_id, data) VALUES (%s, %s)",
+                                (user_id, payload))
+            finally:
+                conn.close()
+        else:
+            with _sqlite_conn() as c:
+                c.execute("DELETE FROM user_squads WHERE user_id = ?", (user_id,))
+                c.execute("INSERT INTO user_squads (user_id, data) VALUES (?, ?)",
+                          (user_id, payload))
+    else:
+        _upsert("squad", payload)  # legacy shared/anonymous squad
 
 
-def load_squad() -> list[dict]:
+def load_squad(user_id: int = 0) -> list[dict]:
     init_db()
+    if user_id and user_id > 0:
+        row = _q("SELECT data FROM user_squads WHERE user_id = %s",
+                 "SELECT data FROM user_squads WHERE user_id = ?",
+                 (user_id,), fetch="one")
+        if row and row[0]:
+            try:
+                return json.loads(row[0])
+            except (ValueError, TypeError):
+                return []
+        return []
     raw = _fetch("squad")
     return json.loads(raw) if raw else []
 
