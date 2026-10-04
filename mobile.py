@@ -546,12 +546,14 @@ def analytics_payload(snap, players=None):
         "has_live": has_live, "gw": gw,
         "captaincy": captaincy, "differentials": diffs,
         "sections": [
-            {"key": "captaincy", "title": "Captaincy", "desc": "Best armband picks, ranked by projected points.", "icon": "C"},
+            {"key": "captainconf", "title": "Captain Confidence", "desc": "Top armband picks: model xPts vs market goal odds.", "icon": "C"},
+            {"key": "cleansheet", "title": "Clean Sheet Board", "desc": "Teams ranked by model + market clean-sheet odds.", "icon": "CS"},
+            {"key": "movers", "title": "Market Movers", "desc": "Who the transfer market is backing or dropping.", "icon": "M"},
+            {"key": "swings", "title": "Fixture Swings", "desc": "Whose fixtures turn easier or harder over 6 GWs.", "icon": "FS"},
+            {"key": "form", "title": "Form & Momentum", "desc": "Players hot or cold vs their season baseline.", "icon": "F"},
+            {"key": "value", "title": "Value Picks", "desc": "Best points-per-million by position.", "icon": "V"},
             {"key": "differentials", "title": "Differentials", "desc": "Low-owned, high-ceiling picks for your mini-leagues.", "icon": "D"},
-            {"key": "radar", "title": "Team Radar", "desc": "Attack vs defence profile for every team.", "icon": "R"},
-            {"key": "h2h", "title": "Head to Head", "desc": "Your players' record vs their next opponent.", "icon": "H"},
             {"key": "setpieces", "title": "Set Pieces", "desc": "Penalty, free-kick and corner takers.", "icon": "S"},
-            {"key": "accuracy", "title": "Accuracy", "desc": "How our predictions have scored vs real results.", "icon": "A"},
         ],
     }
 
@@ -559,10 +561,72 @@ def analytics_payload(snap, players=None):
 # ---------------------------------------------------------------------------
 # ANALYTICS SUB-PAGES — one assembler per section, selected by key.
 # ---------------------------------------------------------------------------
+def _fixture_swings(rankings, fixtures, gw, window=6):
+    """Teams whose upcoming fixtures swing easiest/hardest over `window` GWs.
+
+    Scores each team's run from the perspective of ATTACKERS (opponent defence
+    leakiness) and DEFENDERS (opponent attack weakness), averaged & weighted to
+    nearer GWs. Returns {easiest:[...], hardest:[...]} with a 0-10 run score.
+    """
+    rows = []
+    for team in rankings:
+        upcoming = sorted([f for f in fixtures.get(team, []) if f["gw"] >= gw],
+                          key=lambda f: f["gw"])[:window]
+        if not upcoming:
+            continue
+        att_scores, def_scores, weights, chips = [], [], [], []
+        for idx, fx in enumerate(upcoming):
+            opp = rankings.get(fx["opponent"])
+            if not opp:
+                continue
+            w = 0.85 ** idx
+            # attacking ease = opponent defence leakiness
+            a = (100 - opp.get("defence", 50)) + (6 if fx["venue"] == "H" else -6)
+            # defensive ease = opponent attack weakness
+            d = (100 - opp.get("attack", 50)) + (6 if fx["venue"] == "H" else -6)
+            att_scores.append(max(0, min(100, a)) / 10.0 * w)
+            def_scores.append(max(0, min(100, d)) / 10.0 * w)
+            weights.append(w)
+            chips.append({"opp": fx["opponent"], "venue": fx["venue"]})
+        if not weights:
+            continue
+        tw = sum(weights)
+        att = round(sum(att_scores) / tw, 1)
+        dfn = round(sum(def_scores) / tw, 1)
+        rows.append({"team": team, "attack_ease": att, "defence_ease": dfn,
+                     "overall": round((att + dfn) / 2, 1), "chips": chips})
+    easiest = sorted(rows, key=lambda r: -r["overall"])[:8]
+    hardest = sorted(rows, key=lambda r: r["overall"])[:8]
+    return {"easiest": easiest, "hardest": hardest}
+
+
+def _clean_sheet_board(rankings, fixtures, odds, gw):
+    """Rank teams by combined model+market clean-sheet probability for next GW."""
+    rows = []
+    for team in rankings:
+        fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
+        if not fx or fx["opponent"] not in rankings:
+            continue
+        opp = rankings[fx["opponent"]]
+        venue = fx["venue"]
+        tm_odds = odds.get(team)
+        market_cs = tm_odds.get("cs_prob") if (tm_odds and tm_odds.get("opp") == fx["opponent"]) else None
+        prob = _clean_sheet_prob(opp, venue, market_cs)
+        rows.append({"team": team, "opp": fx["opponent"], "venue": venue,
+                     "cs_prob": round(prob, 3), "cs_pct": round(prob * 100),
+                     "has_market": market_cs is not None})
+    rows.sort(key=lambda r: -r["cs_prob"])
+    return rows
+
+
 ANALYTICS_SECTIONS = {
     "captaincy": "Captaincy", "differentials": "Differentials",
-    "radar": "Team Radar", "h2h": "Head to Head",
-    "setpieces": "Set Pieces", "accuracy": "Accuracy",
+    "radar": "Team Radar", "setpieces": "Set Pieces",
+    "movers": "Market Movers", "form": "Form & Momentum",
+    "swings": "Fixture Swings", "value": "Value Picks",
+    "cleansheet": "Clean Sheet Board", "captainconf": "Captain Confidence",
+    # Hidden for now (still reachable by direct URL, removed from the hub):
+    "h2h": "Head to Head", "accuracy": "Accuracy",
 }
 
 
@@ -600,6 +664,47 @@ def analytics_sub_payload(section, snap, players=None, logs=None):
             results = snap.get("results", {})
             out["data"] = analytics.score_predictions(logs or [], results)
             out["note"] = None if (logs and results) else "Accuracy builds up over time as we log each gameweek's predictions and compare them to real results."
+        elif section == "movers":
+            # Market movers: price risers/fallers from transfer momentum.
+            out["data"] = analytics.price_predictions(players) if has_live else {"rising": [], "falling": []}
+        elif section == "form":
+            # Hot/cold players by recent form vs season ppg.
+            rows = []
+            for pl in players:
+                form = float(pl.get("form", 0) or 0)
+                ppg = float(pl.get("ppg", 0) or 0)
+                if (pl.get("minutes", 0) or 0) < 180:
+                    continue
+                rows.append({"name": pl.get("name"), "team": pl.get("team"),
+                             "position": pl.get("position"), "form": round(form, 1),
+                             "ppg": round(ppg, 1), "delta": round(form - ppg, 1),
+                             "selected_by": pl.get("selected_by", 0)})
+            hot = sorted([r for r in rows if r["delta"] > 0], key=lambda r: -r["delta"])[:10]
+            cold = sorted([r for r in rows if r["delta"] < 0], key=lambda r: r["delta"])[:10]
+            out["data"] = {"hot": hot, "cold": cold}
+            out["has_live"] = has_live
+        elif section == "swings":
+            # Teams whose fixtures turn sharply easier/harder over next 6 GWs.
+            out["data"] = _fixture_swings(rankings, fixtures, gw, window=6)
+            out["has_live"] = bool(snap.get("team_stats"))
+        elif section == "value":
+            out["data"] = analytics.value_finder(players, min_minutes=180) if has_live else {}
+        elif section == "cleansheet":
+            out["data"] = _clean_sheet_board(rankings, fixtures, snap.get("odds") or {}, gw)
+            out["has_live"] = bool(snap.get("team_stats"))
+        elif section == "captainconf":
+            board = analytics.captaincy_board(players, rankings, fixtures, gw, limit=8) if has_live else []
+            odds = snap.get("odds") or {}
+            enriched = []
+            for c in board:
+                tm = odds.get(c.get("team"))
+                goals_exp = tm.get("team_goals_exp") if tm else None
+                enriched.append({**c, "market_goals": goals_exp,
+                                 "own": c.get("selected_by", 0)})
+            # differential captain = best xpts among <15% owned
+            diff_cap = next((c for c in enriched if (c.get("own", 0) or 0) < 15), None)
+            out["data"] = {"board": enriched, "diff_cap": diff_cap}
+            out["has_live"] = has_live
         else:
             out["note"] = "Unknown section."
     except Exception as e:

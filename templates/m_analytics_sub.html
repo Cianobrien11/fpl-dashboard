@@ -158,4 +158,136 @@
   {% endif %}
 {% endif %}
 
+{# ---------- MARKET MOVERS ---------- #}
+{% if kind == 'movers' %}
+  {% if data and (data.rising or data.falling) %}
+    <div class="sec-label" style="font-size:11px;font-weight:800;color:var(--easy);text-transform:uppercase;margin:4px 2px 8px">▲ Backed by the market</div>
+    <div class="card">
+      {% for m in data.rising[:8] %}
+      <div class="row"><div class="rk">{{ loop.index }}</div>
+        <div><div class="nm">{{ m.name }}</div><div class="tm">{{ m.team }} · {{ m.position }}</div></div>
+        <div class="val" style="color:var(--easy)">+{{ '{:,}'.format(m.net) }}</div></div>
+      {% endfor %}
+    </div>
+    <div class="sec-label" style="font-size:11px;font-weight:800;color:var(--hard);text-transform:uppercase;margin:12px 2px 8px">▼ Being sold</div>
+    <div class="card">
+      {% for m in data.falling[:8] %}
+      <div class="row"><div class="rk">{{ loop.index }}</div>
+        <div><div class="nm">{{ m.name }}</div><div class="tm">{{ m.team }} · {{ m.position }}</div></div>
+        <div class="val" style="color:var(--hard)">{{ '{:,}'.format(m.net) }}</div></div>
+      {% endfor %}
+    </div>
+  {% elif not has_live %}<div class="empty">Load live data first — tap “Refresh Data”.</div>
+  {% else %}<div class="empty">No notable transfer momentum yet.</div>{% endif %}
+{% endif %}
+
+{# ---------- FORM & MOMENTUM ---------- #}
+{% if kind == 'form' %}
+  {% if data and (data.hot or data.cold) %}
+    <div class="sec-label" style="font-size:11px;font-weight:800;color:var(--easy);text-transform:uppercase;margin:4px 2px 8px">🔥 Hot — beating their baseline</div>
+    <div class="card">
+      {% for r in data.hot %}
+      <div class="row"><div class="rk">{{ loop.index }}</div>
+        <div><div class="nm"><span class="pos p{{ r.position }}">{{ r.position }}</span>{{ r.name }}</div><div class="tm">{{ r.team }} · form {{ r.form }} vs ppg {{ r.ppg }}</div></div>
+        <div class="val" style="color:var(--easy)">+{{ r.delta }}</div></div>
+      {% endfor %}
+    </div>
+    <div class="sec-label" style="font-size:11px;font-weight:800;color:var(--hard);text-transform:uppercase;margin:12px 2px 8px">❄️ Cold — below baseline</div>
+    <div class="card">
+      {% for r in data.cold %}
+      <div class="row"><div class="rk">{{ loop.index }}</div>
+        <div><div class="nm"><span class="pos p{{ r.position }}">{{ r.position }}</span>{{ r.name }}</div><div class="tm">{{ r.team }} · form {{ r.form }} vs ppg {{ r.ppg }}</div></div>
+        <div class="val" style="color:var(--hard)">{{ r.delta }}</div></div>
+      {% endfor %}
+    </div>
+  {% elif not has_live %}<div class="empty">Load live data first — tap “Refresh Data”.</div>
+  {% else %}<div class="empty">Not enough minutes played yet to judge form.</div>{% endif %}
+{% endif %}
+
+{# ---------- FIXTURE SWINGS ---------- #}
+{% if kind == 'swings' %}
+  {% if data and data.easiest %}
+    <div class="sec-label" style="font-size:11px;font-weight:800;color:var(--easy);text-transform:uppercase;margin:4px 2px 8px">Best fixture runs (next 6)</div>
+    <div class="card" style="padding:4px 12px">
+      {% for t in data.easiest %}
+      <div class="radar-row">
+        <div class="radar-top"><div class="nm">{{ t.team }}</div><div class="xg">ATT {{ t.attack_ease }} · DEF {{ t.defence_ease }}</div></div>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          {% for c in t.chips %}<span style="font-size:9px;font-weight:700;padding:3px 5px;border-radius:5px;background:var(--easy-bg);color:var(--easy)">{{ c.opp[:3]|upper }}{{ c.venue }}</span>{% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="sec-label" style="font-size:11px;font-weight:800;color:var(--hard);text-transform:uppercase;margin:12px 2px 8px">Toughest fixture runs</div>
+    <div class="card" style="padding:4px 12px">
+      {% for t in data.hardest %}
+      <div class="radar-row">
+        <div class="radar-top"><div class="nm">{{ t.team }}</div><div class="xg">ATT {{ t.attack_ease }} · DEF {{ t.defence_ease }}</div></div>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          {% for c in t.chips %}<span style="font-size:9px;font-weight:700;padding:3px 5px;border-radius:5px;background:var(--hard-bg);color:var(--hard)">{{ c.opp[:3]|upper }}{{ c.venue }}</span>{% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}<div class="empty">No fixture data available.</div>{% endif %}
+{% endif %}
+
+{# ---------- VALUE PICKS ---------- #}
+{% if kind == 'value' %}
+  {% if data %}
+    {% for posn in ['GK','DEF','MID','FWD'] %}
+      {% if data[posn] %}
+      <div class="sec-label" style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;margin:10px 2px 8px">{{ posn }}</div>
+      <div class="card">
+        {% for pl in data[posn][:5] %}
+        <div class="row"><div class="rk">{{ loop.index }}</div>
+          <div><div class="nm">{{ pl.name }}</div><div class="tm">{{ pl.team }} · £{{ '%.1f'|format(pl.price) }}m</div></div>
+          <div class="val">{{ '%.1f'|format(pl.ppm|default(0)) }}<span style="display:block;font-size:9px;color:var(--muted);font-weight:700">pts/£m</span></div></div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endfor %}
+  {% elif not has_live %}<div class="empty">Load live data first — tap “Refresh Data”.</div>
+  {% else %}<div class="empty">No value data yet.</div>{% endif %}
+{% endif %}
+
+{# ---------- CLEAN SHEET BOARD ---------- #}
+{% if kind == 'cleansheet' %}
+  {% if data %}
+  <div class="card" style="padding:4px 12px">
+    {% for t in data %}
+    <div class="row">
+      <div class="rk">{{ loop.index }}</div>
+      <div><div class="nm">{{ t.team }}</div><div class="tm">vs {{ t.opp }} ({{ t.venue }}){% if t.has_market %} · market{% endif %}</div></div>
+      <div class="val">{{ t.cs_pct }}%<span style="display:block;font-size:9px;color:var(--muted);font-weight:700">CS odds</span></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<div class="empty">No team data available.</div>{% endif %}
+{% endif %}
+
+{# ---------- CAPTAIN CONFIDENCE ---------- #}
+{% if kind == 'captainconf' %}
+  {% if data and data.board %}
+    {% if data.diff_cap %}
+    <div class="card" style="background:linear-gradient(135deg,var(--p1),var(--p2));border:none;margin-bottom:12px">
+      <div style="font-size:10px;font-weight:800;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.06em">Differential captain</div>
+      <div style="font-size:17px;font-weight:900;color:#fff;margin-top:3px">{{ data.diff_cap.name }}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.85)">{{ data.diff_cap.team }} · {{ '%.1f'|format(data.diff_cap.xpts) }} xPts · {{ '%.1f'|format(data.diff_cap.own|default(0)) }}% owned</div>
+    </div>
+    {% endif %}
+    <div class="card" style="padding:4px 12px">
+      {% for c in data.board %}
+      <div class="row">
+        <div class="rk">{{ loop.index }}</div>
+        <div><div class="nm">{{ c.name }}</div><div class="tm">{{ c.team }} · {{ c.position }}{% if c.own %} · {{ '%.1f'|format(c.own) }}% own{% endif %}</div></div>
+        {% if c.market_goals is not none %}<div class="val" style="color:#fbbf24;margin-right:10px">{{ '%.1f'|format(c.market_goals) }}<span style="display:block;font-size:9px;color:var(--muted);font-weight:700">mkt xG</span></div>{% endif %}
+        <div class="val">{{ '%.1f'|format(c.xpts) }}<span style="display:block;font-size:9px;color:var(--muted);font-weight:700">xPts</span></div>
+      </div>
+      {% endfor %}
+    </div>
+  {% elif not has_live %}<div class="empty">Load live data first — tap “Refresh Data”.</div>
+  {% else %}<div class="empty">No captain picks available.</div>{% endif %}
+{% endif %}
+
 {% endblock %}
