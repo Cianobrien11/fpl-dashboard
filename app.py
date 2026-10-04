@@ -19,7 +19,10 @@ import os
 from flask import (Flask, abort, flash, jsonify, redirect, render_template,
                    request, send_from_directory, session, url_for)
 
+import functools
+
 import analytics
+import billing
 import mailer
 import mobile
 import models
@@ -49,7 +52,13 @@ def inject_settings():
         cu = current_user()
     except Exception:
         cu = None
-    return {"app_settings": s or {}, "current_user": cu}
+    try:
+        pro = user_is_pro()
+    except Exception:
+        pro = True
+    return {"app_settings": s or {}, "current_user": cu,
+            "is_pro": pro, "billing_on": billing.billing_enabled(),
+            "pro_price": billing.pro_price()}
 
 GW_FROM_DEFAULT = 4
 GW_TO_DEFAULT = 11
@@ -239,6 +248,7 @@ def m_players():
 
 
 @app.route("/app/planner")
+@pro_required
 def m_planner():
     snap = _ensure_data()
     players = _players(snap)
@@ -315,6 +325,7 @@ def m_analytics():
 
 
 @app.route("/app/analytics/<section>")
+@pro_required
 def m_analytics_sub(section):
     snap = _ensure_data()
     players = _players(snap)
@@ -331,6 +342,7 @@ def m_analytics_sub(section):
 
 
 @app.route("/app/ask")
+@pro_required
 def m_ask():
     snap = _ensure_data()
     players = _players(snap)
@@ -393,6 +405,22 @@ def _uid() -> int:
         return int(session.get("uid") or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def user_is_pro() -> bool:
+    """True if the current user has Pro (always True while billing is off)."""
+    return billing.is_pro(_uid())
+
+
+def pro_required(view):
+    """Gate a view behind Pro. When billing is OFF this is a no-op (everyone
+    passes). When ON, non-Pro users are sent to the upgrade page."""
+    @functools.wraps(view)
+    def wrapper(*args, **kwargs):
+        if billing.billing_enabled() and not user_is_pro():
+            return redirect(url_for("m_upgrade"))
+        return view(*args, **kwargs)
+    return wrapper
 
 
 @app.route("/app/signup", methods=["POST"])
@@ -464,6 +492,50 @@ def resend_verification():
         mailer.send_verification_email(email, verify_url)
     return render_template("m_account.html", tab="settings",
                            gw=_ensure_data().get("next_gw"), pending=email)
+
+
+# ---------------------------------------------------------------------------
+# BILLING — Stripe subscriptions (dormant until BILLING_ENABLED=1 + keys set).
+# ---------------------------------------------------------------------------
+@app.route("/app/upgrade")
+def m_upgrade():
+    snap = _ensure_data()
+    return render_template("m_upgrade.html", tab="settings",
+                           gw=snap.get("next_gw"))
+
+
+@app.route("/app/subscribe", methods=["POST"])
+def subscribe():
+    if not current_user():
+        return redirect(url_for("m_account"))
+    uid = _uid()
+    email = session.get("uemail", "")
+    res = billing.create_checkout_session(
+        uid, email,
+        success_url=url_for("m_settings", upgraded=1, _external=True),
+        cancel_url=url_for("m_upgrade", _external=True))
+    if res["ok"]:
+        return redirect(res["url"])
+    return render_template("m_upgrade.html", tab="settings",
+                           gw=_ensure_data().get("next_gw"), error=res["error"])
+
+
+@app.route("/app/billing-portal")
+def billing_portal():
+    if not current_user():
+        return redirect(url_for("m_account"))
+    res = billing.create_portal_session(_uid(), url_for("m_settings", _external=True))
+    if res["ok"]:
+        return redirect(res["url"])
+    return redirect(url_for("m_settings"))
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    res = billing.handle_webhook(request.get_data(), request.headers.get("Stripe-Signature", ""))
+    if res["ok"]:
+        return jsonify({"received": True})
+    return jsonify({"error": res["error"]}), 400
 
 
 @app.route("/players")

@@ -1,0 +1,44 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Upgrade to Pro{% endblock %}
+{% block content %}
+<style>
+  .pro-hero{background:linear-gradient(135deg,var(--p1),var(--p2));border-radius:18px;padding:26px 20px;text-align:center;margin-bottom:16px}
+  .pro-hero .crown{font-size:40px;margin-bottom:8px}
+  .pro-hero h2{font-size:23px;font-weight:900;color:#fff}
+  .pro-hero .price{font-size:15px;color:rgba(255,255,255,.9);margin-top:6px;font-weight:700}
+  .feat-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px 16px;margin-bottom:16px}
+  .feat{display:flex;align-items:center;gap:12px;padding:13px 2px;border-bottom:1px solid var(--border);font-size:14px}
+  .feat:last-child{border-bottom:none}
+  .feat .tick{color:var(--accent);font-size:18px;font-weight:900}
+  .feat .ft{font-weight:700}.feat .fd{font-size:11px;color:var(--muted);margin-top:1px}
+  .sub-btn{display:block;width:100%;text-align:center;background:var(--accent);color:#06130d;font-weight:900;font-size:16px;padding:16px;border-radius:13px;border:none;text-decoration:none}
+  .err{background:var(--hard-bg);color:var(--hard);padding:11px 13px;border-radius:10px;font-size:13px;margin-bottom:12px}
+  .fineprint{font-size:11px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.5}
+  .signin-note{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;font-size:13px;color:var(--muted);line-height:1.5}
+  .signin-note a{color:var(--accent);font-weight:700}
+</style>
+
+<div class="pro-hero">
+  <div class="crown">👑</div>
+  <h2>FPL IQ Pro</h2>
+  <div class="price">{{ pro_price }}</div>
+</div>
+
+{% if error %}<div class="err">⚠️ {{ error }}</div>{% endif %}
+
+<div class="feat-card">
+  <div class="feat"><span class="tick">✓</span><div><div class="ft">Transfer Planner</div><div class="fd">GW-range planning, position grid & transfer simulator</div></div></div>
+  <div class="feat"><span class="tick">✓</span><div><div class="ft">Ask FPL IQ</div><div class="fd">Natural-language transfer & captain questions</div></div></div>
+  <div class="feat"><span class="tick">✓</span><div><div class="ft">Analytics deep-dives</div><div class="fd">Captaincy, Clean Sheet Board, Fixture Swings, Form, Value</div></div></div>
+  <div class="feat"><span class="tick">✓</span><div><div class="ft">Transfer recommendations</div><div class="fd">Multi-week, model-driven upgrade suggestions</div></div></div>
+</div>
+
+{% if current_user %}
+  <form method="post" action="{{ url_for('subscribe') }}">
+    <button type="submit" class="sub-btn">Subscribe — {{ pro_price }}</button>
+  </form>
+  <div class="fineprint">Secure payment via Stripe. Cancel anytime from Settings. Renews monthly until cancelled.</div>
+{% else %}
+  <div class="signin-note">Please <a href="{{ url_for('m_account') }}">sign in or create an account</a> first — then you can upgrade to Pro.</div>
+{% endif %}
+{% endblock %}

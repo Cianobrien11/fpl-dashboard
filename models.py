@@ -78,11 +78,17 @@ def init_db() -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_expires TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'free'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_status TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_until TEXT",
     ]
     # SQLite: ADD COLUMN IF NOT EXISTS isn't supported, so add only if missing.
     sqlite_cols = {"verified": "INTEGER DEFAULT 0", "verify_token": "TEXT",
                    "verify_expires": "TEXT", "password_hash": "TEXT",
-                   "created_at": "TEXT"}
+                   "created_at": "TEXT", "plan": "TEXT DEFAULT 'free'",
+                   "sub_status": "TEXT", "stripe_customer_id": "TEXT",
+                   "sub_until": "TEXT"}
 
     if USE_PG:
         conn = _pg_conn()
@@ -435,3 +441,48 @@ def check_login(email: str, password: str) -> dict:
                 "unverified": True, "email": user["email"]}
     return {"ok": True, "error": None, "user_id": user["id"],
             "verified": True, "email": user["email"]}
+
+
+# ---------------------------------------------------------------------------
+# Subscriptions (single Pro tier). Billing is gated behind BILLING_ENABLED in
+# the app layer; these helpers just read/write the user's plan state.
+# ---------------------------------------------------------------------------
+def get_user_plan(user_id: int) -> dict:
+    """Return {plan, sub_status, sub_until, stripe_customer_id} for a user."""
+    if not user_id:
+        return {"plan": "free", "sub_status": None, "sub_until": None,
+                "stripe_customer_id": None}
+    row = _q("SELECT plan, sub_status, sub_until, stripe_customer_id FROM users WHERE id = %s",
+             "SELECT plan, sub_status, sub_until, stripe_customer_id FROM users WHERE id = ?",
+             (user_id,), fetch="one")
+    if not row:
+        return {"plan": "free", "sub_status": None, "sub_until": None,
+                "stripe_customer_id": None}
+    return {"plan": row[0] or "free", "sub_status": row[1],
+            "sub_until": row[2], "stripe_customer_id": row[3]}
+
+
+def set_user_plan(user_id: int, plan: str, status: str = None,
+                  sub_until: str = None) -> None:
+    """Update a user's subscription plan/status (called from Stripe webhook)."""
+    if not user_id:
+        return
+    _q("UPDATE users SET plan = %s, sub_status = %s, sub_until = %s WHERE id = %s",
+       "UPDATE users SET plan = ?, sub_status = ?, sub_until = ? WHERE id = ?",
+       (plan, status, sub_until, user_id))
+
+
+def set_stripe_customer(user_id: int, customer_id: str) -> None:
+    _q("UPDATE users SET stripe_customer_id = %s WHERE id = %s",
+       "UPDATE users SET stripe_customer_id = ? WHERE id = ?",
+       (customer_id, user_id))
+
+
+def get_user_by_stripe_customer(customer_id: str):
+    """Find the user row id for a Stripe customer (used by webhooks)."""
+    if not customer_id:
+        return None
+    row = _q("SELECT id, email FROM users WHERE stripe_customer_id = %s",
+             "SELECT id, email FROM users WHERE stripe_customer_id = ?",
+             (customer_id,), fetch="one")
+    return {"id": row[0], "email": row[1]} if row else None

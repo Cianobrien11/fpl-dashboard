@@ -4,3 +4,4 @@ pandas==2.2.2
 lxml==5.2.2
 gunicorn==22.0.0
 psycopg[binary]==3.2.1
+stripe==10.10.0

@@ -93,7 +93,13 @@
 <!-- Recommended transfer -->
 <div class="sec-label">Recommended Transfer</div>
 <div class="card">
-  {% if transfer and transfer.move %}
+  {% if billing_on and not is_pro %}
+    <div style="text-align:center;padding:8px 4px">
+      <div style="font-size:13px;font-weight:800;margin-bottom:4px">🔒 Pro feature</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px">Unlock multi-week transfer recommendations and more.</div>
+      <a href="{{ url_for('m_upgrade') }}" style="display:inline-block;background:var(--accent);color:#06130d;font-weight:800;font-size:13px;padding:9px 18px;border-radius:9px;text-decoration:none">Upgrade to Pro</a>
+    </div>
+  {% elif transfer and transfer.move %}
     <div class="xfer">
       <span class="out">{{ transfer.move.out }}</span>
       <span class="arrow">→</span>

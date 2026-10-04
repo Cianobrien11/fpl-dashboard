@@ -42,6 +42,22 @@
   <div class="arrow">→</div>
 </a>
 
+{% if billing_on %}
+  {% if is_pro %}
+  <a class="acct-link" href="{{ url_for('billing_portal') }}" style="background:var(--surface);border:1px solid var(--border)">
+    <div class="ic">👑</div>
+    <div><div class="t" style="color:var(--accent)">FPL IQ Pro</div><div class="d" style="color:var(--muted)">Active — manage billing</div></div>
+    <div class="arrow" style="color:var(--muted)">→</div>
+  </a>
+  {% else %}
+  <a class="acct-link" href="{{ url_for('m_upgrade') }}">
+    <div class="ic">👑</div>
+    <div><div class="t">Upgrade to Pro</div><div class="d">Unlock Planner, Ask FPL IQ, Analytics & more</div></div>
+    <div class="arrow">→</div>
+  </a>
+  {% endif %}
+{% endif %}
+
 <form method="post" action="{{ url_for('m_settings') }}" id="settingsForm">
   <div class="set-group">
     <div class="set-row">
