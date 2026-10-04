@@ -27,6 +27,85 @@ def _ease_band(ease: float) -> str:
     return "hard"
 
 
+def recommend_transfer(snap, players, gw_from, gw_to):
+    """Long-term (3-5 GW) transfer recommendation, starter-aware.
+
+    Finds the squad player who is (a) a likely STARTER and (b) projects the
+    FEWEST points over the window, and suggests the best available same-position
+    replacement by total xPts GAIN across the window. Returns a dict:
+      {out, out_team, in, in_team, position, gain, out_total, in_total, reason}
+    or None if nothing sensible to suggest.
+    """
+    fixtures = snap.get("fixtures", {})
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    squad = snap.get("squad", []) or []
+    if not players or not squad:
+        return None
+    try:
+        rng = analytics.expected_points_range(players, rankings, fixtures, gw_from, gw_to)
+    except Exception:
+        return None
+    by_name = {(r.get("name"), r.get("team")): r for r in rng}
+    by_name_only = {}
+    for r in rng:
+        by_name_only.setdefault(r.get("name", "").lower(), r)
+
+    # Build a player-record lookup for minutes/starts (starter detection).
+    pdata = {}
+    for pl in players:
+        pdata[(pl.get("name"), pl.get("team"))] = pl
+        pdata.setdefault(pl.get("name", "").lower(), pl)
+
+    def _is_starter(member):
+        rec = pdata.get((member.get("name"), member.get("team"))) or pdata.get(member.get("name", "").lower())
+        if not rec:
+            return True  # unknown -> don't exclude
+        # a starter plays meaningful minutes: >=60 avg or >=2 starts
+        return (rec.get("avg_min", 0) or 0) >= 55 or (rec.get("starts", 0) or 0) >= 2
+
+    # Candidate "out": squad regulars ranked by LOWEST window xPts.
+    outs = []
+    for m in squad:
+        if m.get("is_bench"):
+            continue
+        if not _is_starter(m):
+            continue
+        r = by_name.get((m.get("name"), m.get("team"))) or by_name_only.get(m.get("name", "").lower())
+        if r:
+            outs.append((r.get("total_xpts", 0), m, r))
+    if not outs:
+        return None
+    outs.sort(key=lambda t: t[0])  # worst first
+    squad_names = {m.get("name", "").lower() for m in squad}
+
+    # Try the worst 3 outs; for each, find the best same-position upgrade.
+    for out_total, out_member, out_rng in outs[:3]:
+        pos = out_member.get("position")
+        budget = (out_member.get("price") or 99) + 2.0  # allow +£2m flexibility
+        candidates = [r for r in rng
+                      if r.get("position") == pos
+                      and r.get("name", "").lower() not in squad_names
+                      and (r.get("price", 99) or 99) <= budget]
+        candidates.sort(key=lambda r: -r.get("total_xpts", 0))
+        if not candidates:
+            continue
+        best = candidates[0]
+        gain = round(best.get("total_xpts", 0) - out_total, 1)
+        if gain < 2.0:  # not worth a transfer over the window
+            continue
+        n_gw = gw_to - gw_from + 1
+        return {
+            "out": out_member.get("name"), "out_team": out_member.get("team"),
+            "in": best.get("name"), "in_team": best.get("team"),
+            "position": pos, "gain": gain,
+            "out_total": round(out_total, 1), "in_total": round(best.get("total_xpts", 0), 1),
+            "reason": (f"Over the next {n_gw} GWs, {best.get('name')} projects "
+                       f"{best.get('total_xpts')} pts vs {out_member.get('name')}'s "
+                       f"{round(out_total,1)} — a {gain}-pt upgrade."),
+        }
+    return None
+
+
 def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
     """Build the Home-tab payload from the current snapshot.
 
@@ -134,25 +213,17 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
         except Exception:
             pass
 
-    # --- Recommended transfer (needs live players for a real suggestion) ---
+    # --- Recommended transfer: LONG-TERM (next 5 GWs), starter-aware ---
+    # Not a one-week punt — ranks the squad's regulars by their 5-GW projected
+    # points and suggests the best replacement by total xPts gain over the run.
     if has_live:
         try:
-            plan = analytics.build_transfer_plan(rankings, fixtures, squad, gw, gw + 5)
-            # plan may be a dict with 'moves' or a list; handle both
-            moves = None
-            if isinstance(plan, dict):
-                moves = plan.get("moves") or plan.get("suggestions")
-            elif isinstance(plan, list):
-                moves = plan
-            if moves:
-                out["transfer"] = moves[0]
-                mv = moves[0]
-                gain = None
-                if isinstance(mv, dict):
-                    gain = mv.get("gain") or mv.get("xpts_gain") or mv.get("delta")
-                    if gain is None and isinstance(mv.get("move"), dict):
-                        gain = mv["move"].get("gain")
-                out["transfer_gain"] = round(gain, 1) if isinstance(gain, (int, float)) else None
+            rec = recommend_transfer(snap, players, gw, gw + 4)
+            if rec:
+                # Shape it like the template expects: {move:{out,in,reason}} + gain
+                out["transfer"] = {"move": {"out": rec["out"], "in": rec["in"],
+                                            "reason": rec["reason"]}}
+                out["transfer_gain"] = rec["gain"]
         except Exception:
             pass
 
