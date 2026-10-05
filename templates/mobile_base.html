@@ -77,7 +77,10 @@ a{text-decoration:none;color:inherit}
 <div class="appbar">
   <div class="brand"><span class="dot"></span> FPL IQ</div>
   {% if gw %}<div class="gw">GW{{ gw }}</div>{% endif %}
-  <a class="gear {{ 'active' if tab=='settings' }} {{ 'noGw' if not gw }}" href="{{ url_for('m_settings') }}" aria-label="Settings">
+  <a class="gear {{ 'active' if tab=='matches' }} {{ 'noGw' if not gw }}" href="{{ url_for('m_matches') }}" aria-label="Matches" style="margin-left:{{ 'auto' if not gw else '10px' }}">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7l2.6 1.9-1 3.1h-3.2l-1-3.1z"/><path d="M12 3v4M4.5 9l3.3 1.2M19.5 9l-3.3 1.2M7 20l1.4-3M17 20l-1.4-3"/></svg>
+  </a>
+  <a class="gear {{ 'active' if tab=='settings' }}" href="{{ url_for('m_settings') }}" aria-label="Settings" style="margin-left:10px">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
   </a>
 </div>
