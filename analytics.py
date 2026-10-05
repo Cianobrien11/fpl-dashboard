@@ -984,12 +984,37 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         x_bonus_pts = _x_bonus(p, egoals, eassists, cs_prob, pos, p60)
         x_card_pts = _x_cards(p, p60)
 
-        xpts = (x_app + x_goal_pts + x_assist_pts + x_cs_pts
-                + x_defcon_pts + x_saves_pts + x_bonus_pts + x_card_pts)
-        xpts = round(max(0.0, xpts), 1)
+        model_xpts = (x_app + x_goal_pts + x_assist_pts + x_cs_pts
+                      + x_defcon_pts + x_saves_pts + x_bonus_pts + x_card_pts)
+        model_xpts = max(0.0, model_xpts)
+
+        # --- ACTUAL-RETURNS ANCHOR ---------------------------------------
+        # The component model is "opportunity" (xG/xA + fixture). On its own it
+        # over-rates fringe players at weak clubs who get a soft fixture (e.g.
+        # a rotation player projecting 8.0 despite ~1 pt/week in reality).
+        # Anchor it to the player's REAL returns: season points-per-game (ppg)
+        # blended with recent form, fixture-adjusted. Lean on the anchor more
+        # as the player's sample (90s played) grows. This pulls low-return
+        # players down toward reality while nailed performers stay high.
+        ninetys = float(p.get("ninetys", 0) or 0)
+        ppg = float(p.get("ppg", 0) or 0)
+        form = float(p.get("form", 0) or 0)
+        if ppg and form:
+            base_return = 0.45 * ppg + 0.55 * form
+        else:
+            base_return = form or ppg
+        # fixture tilt on the real-returns baseline (dampened so form leads)
+        att_mult = _attack_multiplier(opp, venue, league_xga)
+        cs_mult_a = _cs_multiplier(opp, venue, league_xg)
+        fix_adj = att_mult if pos in ("MID", "FWD") else cs_mult_a
+        anchor_xpts = base_return * (1.0 + 0.4 * (fix_adj - 1.0)) * max(0.4, p60)
+        # Blend: tiny sample -> trust the opportunity model; real sample ->
+        # lean on actual returns (caps a fringe player's ceiling).
+        sample_conf = max(0.0, min(1.0, ninetys / 6.0))
+        w_anchor = 0.30 + 0.45 * sample_conf        # 0.30 .. 0.75
+        xpts = round(max(0.0, w_anchor * anchor_xpts + (1 - w_anchor) * model_xpts), 1)
 
         # Confidence: minutes certainty dominates; sample size + status.
-        ninetys = float(p.get("ninetys", 0) or 0)
         mins_cert = min(1.0, p_start + 0.05)
         sample_cert = min(1.0, ninetys / 5.0)
         conf = round(100 * (0.6 * mins_cert + 0.4 * sample_cert))

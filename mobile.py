@@ -368,8 +368,6 @@ def team_payload(snap: dict, imported: dict | None = None,
         m = {**m, "xpts": round(xpts, 1)}
         m["market"] = _market_chip_for(m, odds, fixtures, gw)
         m["fix"] = _player_fixture_chip(m.get("team"), fixtures, gw, rankings, m.get("position", "MID"))
-        kit = TEAM_KIT.get(m.get("team"), ("#555", "#fff"))
-        m["kit1"], m["kit2"] = kit[0], kit[1]
         # ownership from live player data if available
         own = _own_lookup.get((m.get("name") or "").lower()) if _own_lookup else None
         m["own"] = own
