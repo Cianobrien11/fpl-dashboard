@@ -426,16 +426,8 @@ def m_account():
 @app.route("/app/matches")
 def m_matches():
     snap = _ensure_data()
-    players = _players(snap)
-    data = mobile.matches_payload(snap, players)
-    return render_template("m_matches.html", tab="matches", gw=snap.get("next_gw"), **data)
-
-
-@app.route("/app/matches")
-def m_matches():
-    snap = _ensure_data()
     data = mobile.matches_payload(snap, gw=request.args.get("gw"))
-    return render_template("m_matches.html", tab="analytics", **data)
+    return render_template("m_matches.html", tab="matches", **data)
 
 
 # ---------------------------------------------------------------------------
