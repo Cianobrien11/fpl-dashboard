@@ -49,6 +49,29 @@
   .analyse{display:block;width:100%;text-align:center;background:var(--surface2);color:var(--accent);
     font-weight:800;font-size:14px;padding:13px;border-radius:12px;border:1px solid var(--border);margin-top:4px}
   .seed-note{font-size:11px;color:var(--muted);text-align:center;margin:12px 0 2px;line-height:1.5}
+
+  /* jersey-style kit strip on each pitch card */
+  .player{padding-top:14px}
+  .player .kit{position:absolute;top:4px;left:50%;transform:translateX(-50%);width:26px;height:16px;border-radius:4px 4px 2px 2px;border:1.5px solid;display:flex;align-items:center;justify-content:center}
+  .player .kit span{width:6px;height:100%;display:block;opacity:.6}
+  .player .fixchip{margin-top:3px;font-size:8px;font-weight:800;border-radius:4px;padding:1px 4px;display:inline-block}
+  .fix-easy{background:var(--easy-bg);color:var(--easy)}
+  .fix-mid{background:var(--mid-bg);color:var(--mid)}
+  .fix-hard{background:var(--hard-bg);color:var(--hard)}
+  /* in-page analysis panel */
+  .analysis{display:none;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:4px}
+  .analysis.open{display:block}
+  .an-title{font-size:14px;font-weight:900;margin-bottom:12px}
+  .an-lines{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .an-line{flex:1;min-width:72px;background:var(--bg);border-radius:9px;padding:9px;text-align:center}
+  .an-line span{font-size:10px;color:var(--muted);text-transform:uppercase;display:block}
+  .an-line b{font-size:15px;color:var(--accent);font-variant-numeric:tabular-nums}
+  .an-insight{font-size:13px;color:var(--text);line-height:1.5;margin:6px 0}
+  .an-rec{background:var(--bg);border:1px solid var(--border);border-radius:11px;padding:12px;margin-top:12px}
+  .an-rec-h{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+  .an-rec-move{font-size:15px;font-weight:800}
+  .an-gain{background:var(--easy-bg);color:var(--easy);font-size:12px;font-weight:900;padding:3px 8px;border-radius:100px;margin-left:4px}
+  .an-rec-why{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.45}
 </style>
 
 <div class="sec-label">My Team</div>
@@ -92,15 +115,23 @@
   {% endif %}
 </div>
 
+<form method="get" action="{{ url_for('m_team') }}" style="margin-bottom:12px">
+  <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px">Gameweek</label>
+  <select name="gw" onchange="this.form.submit()" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:11px 13px;font-size:15px;font-weight:700">
+    {% for g in gws %}<option value="{{ g }}" {{ 'selected' if g==gw }}>Gameweek {{ g }}</option>{% endfor %}
+  </select>
+</form>
+
 <!-- Pitch -->
 <div class="pitch">
   {% macro pcard(m) %}
     <div class="player">
       {% if m.is_captain %}<span class="arm c">C</span>{% elif m.is_vice %}<span class="arm v">V</span>{% endif %}
+      <div class="kit" style="background:{{ m.kit1 }};border-color:{{ m.kit2 }}"><span style="background:{{ m.kit2 }}"></span></div>
       <div class="pn">{{ m.name }}</div>
-      <div class="pmeta">{{ m.team }}</div>
+      <div class="pmeta">{{ m.team }}{% if m.own %} · {{ '%.0f'|format(m.own) }}%{% endif %}</div>
       {% if m.xpts %}<div class="pxp">{{ '%.1f'|format(m.xpts * 2 if m.is_captain else m.xpts) }}<small> proj{{ ' (C)' if m.is_captain }}</small></div>{% endif %}
-      {% if m.market %}<div style="font-size:8px;font-weight:800;color:#8a6a10;background:#fde68a;border-radius:4px;padding:1px 4px;margin-top:3px;display:inline-block">{{ m.market.value }}</div>{% endif %}
+      {% if m.fix %}<div class="fixchip fix-{{ m.fix.band }}">{{ m.fix.opp }} ({{ m.fix.venue }})</div>{% endif %}
     </div>
   {% endmacro %}
   <div class="prow">{% for m in gk %}{{ pcard(m) }}{% endfor %}</div>
@@ -124,7 +155,30 @@
 </div>
 {% endif %}
 
-<a class="analyse" href="{{ url_for('m_analytics') }}">Analyse my team →</a>
+<button type="button" class="analyse" onclick="document.getElementById('teamAnalysis').classList.toggle('open'); this.style.display='none'">Analyse my team →</button>
+
+{% if analysis %}
+<div id="teamAnalysis" class="analysis">
+  <div class="an-title">📊 Team analysis · GW{{ gw }}</div>
+  <div class="an-lines">
+    {% for pos,label in [('GK','Goalkeeper'),('DEF','Defence'),('MID','Midfield'),('FWD','Attack')] %}
+      {% if analysis.pos_totals.get(pos) %}
+      <div class="an-line"><span>{{ label }}</span><b>{{ analysis.pos_totals[pos] }} pts</b></div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <div class="an-insight">Your <b>{{ analysis.best_line_name }}</b> is your strongest line this gameweek.</div>
+  {% if analysis.strongest %}<div class="an-insight">⭐ Top projected: <b>{{ analysis.strongest.name }}</b> ({{ '%.1f'|format(analysis.strongest.xpts) }} pts)</div>{% endif %}
+  {% if analysis.weakest %}<div class="an-insight">⚠️ Weakest starter: <b>{{ analysis.weakest.name }}</b> ({{ '%.1f'|format(analysis.weakest.xpts) }} pts)</div>{% endif %}
+  {% if analysis.transfer %}
+  <div class="an-rec">
+    <div class="an-rec-h">Suggested transfer</div>
+    <div class="an-rec-move"><span style="color:var(--hard)">{{ analysis.transfer.out }}</span> → <span style="color:var(--easy)">{{ analysis.transfer['in'] }}</span> <span class="an-gain">+{{ analysis.transfer.gain }} pts</span></div>
+    <div class="an-rec-why">{{ analysis.transfer.reason }}</div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
 
 {% if not imported %}
 <div class="seed-note">Showing your saved squad. Import your FPL Team ID above to load your live team with captain, bench and bank.</div>

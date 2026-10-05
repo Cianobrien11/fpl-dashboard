@@ -255,8 +255,35 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
     return out
 
 
+# Team kit colours (primary, secondary) for jersey-style cards on the pitch.
+TEAM_KIT = {
+    "Arsenal": ("#EF0107", "#ffffff"), "Aston Villa": ("#95BFE5", "#670E36"),
+    "Bournemouth": ("#DA291C", "#000000"), "Brentford": ("#E30613", "#ffffff"),
+    "Brighton": ("#0057B8", "#ffffff"), "Chelsea": ("#034694", "#ffffff"),
+    "Coventry": ("#78D0F3", "#ffffff"), "Crystal Palace": ("#1B458F", "#C4122E"),
+    "Everton": ("#003399", "#ffffff"), "Fulham": ("#ffffff", "#000000"),
+    "Hull City": ("#F18A01", "#000000"), "Ipswich": ("#3A64A3", "#ffffff"),
+    "Leeds": ("#FFCD00", "#1D428A"), "Liverpool": ("#C8102E", "#ffffff"),
+    "Man City": ("#6CABDD", "#ffffff"), "Man United": ("#DA291C", "#ffffff"),
+    "Newcastle": ("#241F20", "#ffffff"), "Nottm Forest": ("#DD0000", "#ffffff"),
+    "Tottenham": ("#ffffff", "#132257"), "Sunderland": ("#EB172B", "#ffffff"),
+}
+
+
+def _player_fixture_chip(team, fixtures, gw, rankings, pos):
+    """Fixture chip for a player's GW: {opp, venue, band}."""
+    fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw), None)
+    if not fx or fx["opponent"] not in rankings:
+        return None
+    cat = "gs" if pos in ("MID", "FWD") else "cs"
+    d = analytics._difficulty(cat, rankings[fx["opponent"]], fx["venue"])
+    band = "easy" if d == 0 else ("mid" if d == 1 else "hard")
+    return {"opp": analytics.CODE.get(fx["opponent"], fx["opponent"][:3]),
+            "venue": fx["venue"], "band": band}
+
+
 def team_payload(snap: dict, imported: dict | None = None,
-                 players: list[dict] | None = None) -> dict:
+                 players: list[dict] | None = None, gw_override: int | None = None) -> dict:
     """Build the My Team tab payload.
 
     If `imported` (the result of scraper.import_fpl_team) is present and ok,
@@ -276,7 +303,8 @@ def team_payload(snap: dict, imported: dict | None = None,
     players = players or snap.get("players", []) or []
     fixtures = snap.get("fixtures", {})
     team_stats = snap.get("team_stats", {})
-    gw = snap.get("next_gw") or snap.get("current_gw") or 1
+    next_gw = snap.get("next_gw") or snap.get("current_gw") or 1
+    gw = int(gw_override) if gw_override else next_gw
     rankings = analytics.compute_rankings(team_stats, snap.get("team_strength"))
 
     out = {
@@ -285,6 +313,8 @@ def team_payload(snap: dict, imported: dict | None = None,
         "bank": None, "team_value": None, "gw": gw,
         "gk": [], "defs": [], "mids": [], "fwds": [], "bench": [],
         "captain": None, "vice": None, "projected": None,
+        "next_gw": next_gw, "gws": list(range(next_gw, min(next_gw + 7, 39))),
+        "analysis": None,
     }
 
     if imported and imported.get("ok"):
@@ -296,7 +326,7 @@ def team_payload(snap: dict, imported: dict | None = None,
             "overall_rank": imported.get("overall_rank"),
             "bank": imported.get("bank"),
             "team_value": imported.get("team_value"),
-            "gw": imported.get("gw", gw),
+            "gw": gw if gw_override else imported.get("gw", gw),
         })
         gw = out["gw"]
     elif imported and not imported.get("ok"):
@@ -331,10 +361,18 @@ def team_payload(snap: dict, imported: dict | None = None,
     have_proj = bool(xp_by_el or xp_by_name)
 
     odds = snap.get("odds") or {}
+    _own_lookup = {(pl.get("name") or "").lower(): pl.get("selected_by")
+                   for pl in players} if players else {}
     for m in squad:
         xpts = _xp(m)
         m = {**m, "xpts": round(xpts, 1)}
         m["market"] = _market_chip_for(m, odds, fixtures, gw)
+        m["fix"] = _player_fixture_chip(m.get("team"), fixtures, gw, rankings, m.get("position", "MID"))
+        kit = TEAM_KIT.get(m.get("team"), ("#555", "#fff"))
+        m["kit1"], m["kit2"] = kit[0], kit[1]
+        # ownership from live player data if available
+        own = _own_lookup.get((m.get("name") or "").lower()) if _own_lookup else None
+        m["own"] = own
         is_bench = m.get("is_bench", False)
         if out["imported"]:
             if is_bench:
@@ -370,6 +408,31 @@ def team_payload(snap: dict, imported: dict | None = None,
             pass
 
     out["projected"] = round(projected, 1) if have_proj else None
+
+    # --- In-page team analysis (shown under the pitch) ---
+    if have_proj and starters:
+        by_pos = {"GK": [], "DEF": [], "MID": [], "FWD": []}
+        for mm in starters:
+            by_pos.setdefault(mm.get("position", "MID"), []).append(mm)
+        pos_totals = {k: round(sum(x.get("xpts", 0) for x in v), 1)
+                      for k, v in by_pos.items() if v}
+        ranked_all = sorted(starters, key=lambda x: -x.get("xpts", 0))
+        strongest = ranked_all[0] if ranked_all else None
+        weakest = ranked_all[-1] if ranked_all else None
+        # strongest LINE (by total)
+        best_line = max(pos_totals, key=pos_totals.get) if pos_totals else None
+        line_names = {"GK": "goalkeeper", "DEF": "defence", "MID": "midfield", "FWD": "attack"}
+        rec = None
+        try:
+            rec = recommend_transfer(snap, players, gw, min(gw + 4, 38))
+        except Exception:
+            rec = None
+        out["analysis"] = {
+            "pos_totals": pos_totals,
+            "best_line": best_line, "best_line_name": line_names.get(best_line, best_line),
+            "strongest": strongest, "weakest": weakest,
+            "transfer": rec, "gw": gw,
+        }
     return out
 
 

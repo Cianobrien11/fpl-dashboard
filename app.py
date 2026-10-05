@@ -345,7 +345,9 @@ def m_team():
                 snap = {**snap, "squad": user_squad}
         except Exception:
             pass
-    data = mobile.team_payload(snap, imported=imported, players=players)
+    gw_sel = request.args.get("gw")
+    data = mobile.team_payload(snap, imported=imported, players=players,
+                               gw_override=gw_sel)
     return render_template("m_team.html", tab="team", team_id=team_id, **data)
 
 
