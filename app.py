@@ -60,6 +60,39 @@ def inject_settings():
             "is_pro": pro, "billing_on": billing.billing_enabled(),
             "pro_price": billing.pro_price()}
 
+
+def current_user():
+    """Return the logged-in user's {id, email} from the session, or None."""
+    uid = session.get("uid")
+    if not uid:
+        return None
+    return {"id": uid, "email": session.get("uemail")}
+
+
+def _uid() -> int:
+    """Logged-in user's id, or 0 for the shared/anonymous device row."""
+    try:
+        return int(session.get("uid") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def user_is_pro() -> bool:
+    """True if the current user has Pro (always True while billing is off)."""
+    return billing.is_pro(_uid())
+
+
+def pro_required(view):
+    """Gate a view behind Pro. When billing is OFF this is a no-op (everyone
+    passes). When ON, non-Pro users are sent to the upgrade page."""
+    @functools.wraps(view)
+    def wrapper(*args, **kwargs):
+        if billing.billing_enabled() and not user_is_pro():
+            return redirect(url_for("m_upgrade"))
+        return view(*args, **kwargs)
+    return wrapper
+
+
 GW_FROM_DEFAULT = 4
 GW_TO_DEFAULT = 11
 
@@ -391,36 +424,6 @@ def m_account():
 # ---------------------------------------------------------------------------
 # AUTH — signup / verify / login / logout. Sessions store the logged-in user.
 # ---------------------------------------------------------------------------
-def current_user():
-    """Return the logged-in user's {id, email} from the session, or None."""
-    uid = session.get("uid")
-    if not uid:
-        return None
-    return {"id": uid, "email": session.get("uemail")}
-
-
-def _uid() -> int:
-    """Logged-in user's id, or 0 for the shared/anonymous device row."""
-    try:
-        return int(session.get("uid") or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def user_is_pro() -> bool:
-    """True if the current user has Pro (always True while billing is off)."""
-    return billing.is_pro(_uid())
-
-
-def pro_required(view):
-    """Gate a view behind Pro. When billing is OFF this is a no-op (everyone
-    passes). When ON, non-Pro users are sent to the upgrade page."""
-    @functools.wraps(view)
-    def wrapper(*args, **kwargs):
-        if billing.billing_enabled() and not user_is_pro():
-            return redirect(url_for("m_upgrade"))
-        return view(*args, **kwargs)
-    return wrapper
 
 
 @app.route("/app/signup", methods=["POST"])
