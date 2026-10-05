@@ -32,7 +32,9 @@
     width:70px;padding:6px 3px 5px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.25)}
   .player .pn{font-size:10.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .player .pmeta{font-size:8.5px;color:#5a6b60;margin-top:1px}
-  .player .pxp{font-size:11px;font-weight:900;color:#0b7a4a;margin-top:2px;font-variant-numeric:tabular-nums}
+  .player .pxp{display:block;margin-top:4px;background:linear-gradient(90deg,#f59e0b,#f97316);color:#1a1200;
+    font-size:11px;font-weight:900;border-radius:5px;padding:2px 0;font-variant-numeric:tabular-nums}
+  .player .pxp small{font-size:7px;font-weight:700;opacity:.75;text-transform:uppercase}
   .player .arm{position:absolute;top:-7px;right:-6px;width:18px;height:18px;border-radius:50%;
     font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;color:#fff;
     box-shadow:0 1px 3px rgba(0,0,0,.4)}
@@ -82,7 +84,7 @@
 <div class="stats">
   <div class="stat">
     <div class="v accent">{{ projected if projected is not none else '—' }}</div>
-    <div class="k">Projected</div>
+    <div class="k">Proj. GW pts</div>
   </div>
   {% if imported %}
   <div class="stat"><div class="v">£{{ team_value }}m</div><div class="k">Team value</div></div>
@@ -97,7 +99,7 @@
       {% if m.is_captain %}<span class="arm c">C</span>{% elif m.is_vice %}<span class="arm v">V</span>{% endif %}
       <div class="pn">{{ m.name }}</div>
       <div class="pmeta">{{ m.team }}</div>
-      {% if m.xpts %}<div class="pxp">{{ '%.1f'|format(m.xpts) }}</div>{% endif %}
+      {% if m.xpts %}<div class="pxp">{{ '%.1f'|format(m.xpts * 2 if m.is_captain else m.xpts) }}<small> proj{{ ' (C)' if m.is_captain }}</small></div>{% endif %}
       {% if m.market %}<div style="font-size:8px;font-weight:800;color:#8a6a10;background:#fde68a;border-radius:4px;padding:1px 4px;margin-top:3px;display:inline-block">{{ m.market.value }}</div>{% endif %}
     </div>
   {% endmacro %}

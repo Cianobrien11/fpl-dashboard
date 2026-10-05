@@ -421,6 +421,13 @@ def m_account():
                            gw=snap.get("next_gw"))
 
 
+@app.route("/app/matches")
+def m_matches():
+    snap = _ensure_data()
+    data = mobile.matches_payload(snap, gw=request.args.get("gw"))
+    return render_template("m_matches.html", tab="analytics", **data)
+
+
 # ---------------------------------------------------------------------------
 # AUTH — signup / verify / login / logout. Sessions store the logged-in user.
 # ---------------------------------------------------------------------------
@@ -890,6 +897,22 @@ def ingest_odds():
     snap = _ensure_data()
     snap["odds"] = incoming
     snap["odds_updated"] = payload.get("updated")
+    models.save_snapshot(snap)
+    return jsonify({"status": "ok", "received": len(incoming)})
+
+
+@app.route("/ingest/match-details", methods=["POST"])
+def ingest_match_details():
+    """Receive per-match detail (scores, xG, top performers) from the Action."""
+    expected = os.environ.get("CRON_TOKEN", "")
+    if not expected or request.args.get("token") != expected:
+        abort(403)
+    payload = request.get_json(silent=True) or {}
+    incoming = payload.get("matches") or []
+    if not incoming:
+        return jsonify({"status": "error", "reason": "no matches"}), 400
+    snap = _ensure_data()
+    snap["match_details"] = incoming
     models.save_snapshot(snap)
     return jsonify({"status": "ok", "received": len(incoming)})
 @app.template_filter("dcls")

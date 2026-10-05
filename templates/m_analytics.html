@@ -64,6 +64,11 @@
 
 <div class="sec-label">Explore</div>
 <div class="grid">
+  <a class="acard" href="{{ url_for('m_matches') }}">
+    <div class="ic">⚽</div>
+    <div class="t">Matches</div>
+    <div class="d">Predicted scorelines & recent results.</div>
+  </a>
   {% for s in sections %}
   <a class="acard" href="{{ url_for('m_analytics_sub', section=s.key) }}">
     <div class="ic">{{ s.icon }}</div>

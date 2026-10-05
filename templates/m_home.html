@@ -144,7 +144,8 @@
 </div>
 {% endif %}
 
-<!-- Plan my team CTA -->
+<!-- Matches (free) + Plan my team CTA -->
+<a class="cta" href="{{ url_for('m_matches') }}" style="background:var(--surface2);color:var(--accent);border:1px solid var(--border);margin-bottom:10px">⚽ MATCHES & PREDICTIONS →</a>
 <a class="cta" href="{{ url_for('m_planner') }}">PLAN MY TEAM →</a>
 
 {% if not has_live %}

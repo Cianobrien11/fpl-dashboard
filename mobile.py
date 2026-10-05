@@ -589,9 +589,16 @@ def players_payload(snap, players=None, position="ALL", sort="points",
             "fixtures": _next_fixtures(pl.get("team"), fixtures, gw, 5),
             "market": mk_chip,
         })
+    seen_n = set(); all_players = []
+    for pl in sorted(players, key=lambda r: r.get("name", "")):
+        nm = pl.get("name")
+        if nm and nm.lower() not in seen_n and (pl.get("minutes", 0) or 0) > 0:
+            seen_n.add(nm.lower())
+            all_players.append({"name": nm, "team": pl.get("team", ""),
+                                "pos": pl.get("position", "")})
     return {
         "rows": out_rows, "has_live": has_live, "gw": gw,
-        "has_odds": bool(odds),
+        "has_odds": bool(odds), "all_players": all_players,
         "position": position, "sort": sort, "search": search,
         "positions": ["ALL", "GK", "DEF", "MID", "FWD"],
         "sorts": [("points", "Points"), ("xpts", "xPts"), ("form", "Form"),
@@ -1050,3 +1057,68 @@ def ask_fpl_iq(question, snap, players=None, gw_from=None, gw_to=None):
     out["note"] = ("Try: \u201cShould I transfer X for Y?\u201d, \u201cWho should I "
                    "captain?\u201d, or \u201cbest midfielder under \u00a38m\u201d.")
     return out
+
+
+def matches_payload(snap, gw=None):
+    """Matches tab: UPCOMING fixtures with model scoreline predictions, plus
+    the most recent FINISHED results. Returns {gw, upcoming, finished, has_data}.
+    """
+    fixtures = snap.get("fixtures", {})
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    next_gw = snap.get("next_gw") or snap.get("current_gw") or 1
+    gw = int(gw or next_gw)
+
+    # Upcoming: predicted scorelines for the selected GW.
+    upcoming = []
+    try:
+        for p in analytics.predict_gameweek(rankings, fixtures, gw):
+            upcoming.append({
+                "home": p["home"], "away": p["away"],
+                "home_code": analytics.CODE.get(p["home"], p["home"][:3]),
+                "away_code": analytics.CODE.get(p["away"], p["away"][:3]),
+                "home_score": p["home_score"], "away_score": p["away_score"],
+                "home_xg": p.get("home_xg"), "away_xg": p.get("away_xg"),
+                "verdict": p.get("verdict"), "confidence": p.get("confidence"),
+            })
+    except Exception:
+        pass
+
+    # Finished: prefer the rich match_details (xG + top performers) from the
+    # Action; fall back to the plain results scores if details aren't present.
+    finished = []
+    details = snap.get("match_details") or []
+    if details:
+        for d in details[:10]:
+            finished.append({
+                "home": d.get("home"), "away": d.get("away"),
+                "home_code": analytics.CODE.get(d.get("home"), (d.get("home") or "")[:3]),
+                "away_code": analytics.CODE.get(d.get("away"), (d.get("away") or "")[:3]),
+                "hs": d.get("hs"), "as": d.get("as"),
+                "hxg": d.get("hxg"), "axg": d.get("axg"),
+                "top_home": d.get("top_home"), "top_away": d.get("top_away"),
+                "rich": True,
+            })
+        return {"gw": gw, "next_gw": next_gw, "upcoming": upcoming,
+                "finished": finished, "has_data": bool(snap.get("team_stats"))}
+    results = snap.get("results", {}) or {}
+    if results:
+        try:
+            # pick the highest finished gw <= current
+            gws_done = sorted((int(k) for k in results.keys()), reverse=True)
+            last_done = next((g for g in gws_done if g < gw), gws_done[0] if gws_done else None)
+            if last_done is not None:
+                for r in results.get(str(last_done), []):
+                    hr = rankings.get(r.get("home"), {})
+                    ar = rankings.get(r.get("away"), {})
+                    finished.append({
+                        "gw": last_done,
+                        "home": r.get("home"), "away": r.get("away"),
+                        "home_code": analytics.CODE.get(r.get("home"), (r.get("home") or "")[:3]),
+                        "away_code": analytics.CODE.get(r.get("away"), (r.get("away") or "")[:3]),
+                        "hs": r.get("hs"), "as": r.get("as"),
+                    })
+        except Exception:
+            pass
+
+    return {"gw": gw, "next_gw": next_gw, "upcoming": upcoming,
+            "finished": finished, "has_data": bool(snap.get("team_stats"))}

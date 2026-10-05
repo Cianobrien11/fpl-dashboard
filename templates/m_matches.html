@@ -1,0 +1,96 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Matches{% endblock %}
+{% block content %}
+<style>
+  .mtabs{display:flex;gap:6px;margin-bottom:14px}
+  .mtabs button{flex:1;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-weight:800;font-size:14px}
+  .mtabs button.on{background:var(--accent);color:#06130d;border-color:var(--accent)}
+  .mpane{display:none}.mpane.on{display:block}
+
+  .match{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:13px 14px;margin-bottom:10px}
+  .mrow{display:flex;align-items:center;gap:10px}
+  .mteam{flex:1;font-size:14px;font-weight:800}
+  .mteam.away{text-align:right}
+  .mscore{font-family:monospace;font-size:20px;font-weight:900;color:var(--text);min-width:58px;text-align:center}
+  .mscore .pred{color:var(--accent)}
+  .mmeta{display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:var(--muted)}
+  .mxg{font-family:monospace}
+  .verdict{display:inline-block;font-size:11px;font-weight:800;padding:3px 9px;border-radius:100px;margin-top:9px}
+  .v-clear{background:var(--easy-bg);color:var(--easy)}
+  .v-lean{background:var(--surface2);color:var(--accent)}
+  .v-tight{background:var(--mid-bg);color:var(--mid)}
+  .ghdr{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:4px 2px 10px}
+  .empty{font-size:12.5px;color:var(--muted);text-align:center;padding:26px 12px;line-height:1.55}
+</style>
+
+<div class="sec-label">Matches</div>
+
+<div class="mtabs">
+  <button id="tabUp" class="on" onclick="mShow('up')">Upcoming</button>
+  <button id="tabFin" onclick="mShow('fin')">Results</button>
+</div>
+
+<!-- UPCOMING: predicted scorelines -->
+<div id="paneUp" class="mpane on">
+  <div class="ghdr">Predictions · GW{{ gw }}</div>
+  {% if upcoming %}
+    {% for m in upcoming %}
+    <div class="match">
+      <div class="mrow">
+        <div class="mteam">{{ m.home }}</div>
+        <div class="mscore"><span class="pred">{{ m.home_score }}–{{ m.away_score }}</span></div>
+        <div class="mteam away">{{ m.away }}</div>
+      </div>
+      <div class="mmeta">
+        <span class="mxg">xG {{ '%.2f'|format(m.home_xg) }}</span>
+        <span>{{ m.verdict }}</span>
+        <span class="mxg">xG {{ '%.2f'|format(m.away_xg) }}</span>
+      </div>
+      <span class="verdict {{ 'v-clear' if m.confidence=='Clear' else 'v-lean' if m.confidence=='Lean' else 'v-tight' }}">{{ m.confidence }}</span>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">No upcoming fixtures to predict for GW{{ gw }}.</div>
+  {% endif %}
+</div>
+
+<!-- RESULTS: finished scores -->
+<div id="paneFin" class="mpane">
+  {% if finished %}
+    <div class="ghdr">Recent results</div>
+    {% for m in finished %}
+    <div class="match">
+      <div class="mrow">
+        <div class="mteam">{{ m.home }}</div>
+        <div class="mscore">{{ m.hs }}–{{ m.as }}</div>
+        <div class="mteam away">{{ m.away }}</div>
+      </div>
+      {% if m.rich %}
+      <div class="mmeta">
+        <span class="mxg">xG {{ '%.2f'|format(m.hxg) }}</span>
+        <span></span>
+        <span class="mxg">xG {{ '%.2f'|format(m.axg) }}</span>
+      </div>
+      {% if m.top_home or m.top_away %}
+      <div class="mmeta" style="margin-top:6px">
+        <span>{% if m.top_home %}⭐ {{ m.top_home.name }}{% if m.top_home.g %} {{ m.top_home.g }}G{% endif %}{% if m.top_home.a %} {{ m.top_home.a }}A{% endif %}{% endif %}</span>
+        <span>{% if m.top_away %}{{ m.top_away.name }} ⭐{% if m.top_away.g %} {{ m.top_away.g }}G{% endif %}{% if m.top_away.a %} {{ m.top_away.a }}A{% endif %}{% endif %}</span>
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">Results appear after the first finished gameweek is loaded from the data pipeline.</div>
+  {% endif %}
+</div>
+
+<script>
+function mShow(w){
+  document.getElementById('paneUp').classList.toggle('on', w==='up');
+  document.getElementById('paneFin').classList.toggle('on', w==='fin');
+  document.getElementById('tabUp').classList.toggle('on', w==='up');
+  document.getElementById('tabFin').classList.toggle('on', w==='fin');
+}
+</script>
+{% endblock %}

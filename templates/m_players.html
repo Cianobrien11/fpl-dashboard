@@ -47,13 +47,26 @@
   .iqseg .bar{width:100%;background:linear-gradient(180deg,var(--accent),#1f8a5a);border-radius:3px;min-height:3px}
   .iqseg .lab{font-size:7.5px;color:var(--muted);text-transform:uppercase}
   .empty{font-size:12px;color:var(--muted);line-height:1.55;text-align:center;padding:28px 12px}
+
+  .search .ac{position:relative}
+  .pac-list{position:absolute;top:100%;left:0;right:0;z-index:40;background:var(--surface2);border:1px solid var(--border);border-radius:0 0 11px 11px;max-height:240px;overflow-y:auto;display:none;margin-top:2px}
+  .pac-item{padding:11px 13px;font-size:13px;font-weight:700;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+  .pac-item:last-child{border-bottom:none}
+  .pac-item:hover,.pac-item:active{background:var(--accent);color:#06130d}
+  .pac-tm{margin-left:auto;font-size:10px;color:var(--muted);font-weight:600}
+  .pac-item:hover .pac-tm{color:#06130d}
+  .pac-pos{font-size:8px;font-weight:800;padding:2px 5px;border-radius:4px;color:#fff}
+  .pac-GK{background:#b45309}.pac-DEF{background:#2b6cb0}.pac-MID{background:#15803d}.pac-FWD{background:#9d174d}
 </style>
 
 <div class="sec-label">Players</div>
 
 <form method="get" action="{{ url_for('m_players') }}">
   <div class="search">
-    <input type="text" name="q" value="{{ search }}" placeholder="Search a player…">
+    <div class="ac" style="flex:1;position:relative">
+      <input type="text" name="q" value="{{ search }}" placeholder="Search a player…" autocomplete="off" oninput="pacFilter(this)" onfocus="pacFilter(this)">
+      <div class="pac-list"></div>
+    </div>
     <button type="submit">Go</button>
   </div>
   <div class="chips">
@@ -129,4 +142,33 @@
   </div>
 {% endif %}
 
+<script>
+  var PLAYER_POOL = [
+    {% for pl in all_players %}{"n":{{ pl.name|tojson }},"t":{{ pl.team|tojson }},"p":{{ pl.pos|tojson }}}{{ "," if not loop.last }}{% endfor %}
+  ];
+  function pacFilter(input){
+    var q=input.value.trim().toLowerCase();
+    var box=input.parentElement.querySelector('.pac-list');
+    if(!q){box.style.display='none';box.innerHTML='';return;}
+    var hits=PLAYER_POOL.filter(function(p){return p.n.toLowerCase().indexOf(q)!==-1;}).slice(0,8);
+    if(!hits.length){box.style.display='none';return;}
+    box.innerHTML=hits.map(function(p){
+      return '<div class="pac-item" data-n="'+p.n.replace(/"/g,'&quot;')+'"><span class="pac-pos pac-'+p.p+'">'+p.p+'</span>'+p.n+' <span class="pac-tm">'+p.t+'</span></div>';
+    }).join('');
+    box.style.display='block';
+    Array.prototype.forEach.call(box.querySelectorAll('.pac-item'),function(el){
+      el.addEventListener('mousedown',function(e){
+        e.preventDefault();
+        input.value=el.getAttribute('data-n');
+        box.style.display='none';
+        input.form.submit();
+      });
+    });
+  }
+  document.addEventListener('click',function(e){
+    if(!e.target.closest('.search .ac')){
+      Array.prototype.forEach.call(document.querySelectorAll('.pac-list'),function(b){b.style.display='none';});
+    }
+  });
+</script>
 {% endblock %}

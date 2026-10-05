@@ -206,6 +206,56 @@ def scrape_team_stats() -> dict:
     return out
 
 
+def scrape_match_details(max_matches: int = 10) -> list:
+    """Per-match detail for the most recent finished matches from Understat.
+
+    For each recent finished match: scoreline, each side's match xG, and the
+    standout performer per side (by goals+assists, then xG+xA). Returns a list
+    of dicts the app stores and shows on the Matches 'Results' tab.
+    """
+    from understatapi import UnderstatClient
+    out = []
+    with UnderstatClient() as understat:
+        matches = understat.league(league="EPL").get_match_data(season=SEASON)
+        # keep only finished results, newest first
+        done = [m for m in (matches or []) if str(m.get("isResult")).lower() in ("true", "1")]
+        done.sort(key=lambda m: m.get("datetime", ""), reverse=True)
+        for m in done[:max_matches]:
+            mid = m.get("id")
+            h = (m.get("h") or {}).get("title", "")
+            a = (m.get("a") or {}).get("title", "")
+            hs = int(_f((m.get("goals") or {}).get("h")))
+            as_ = int(_f((m.get("goals") or {}).get("a")))
+            hxg = round(_f((m.get("xG") or {}).get("h")), 2)
+            axg = round(_f((m.get("xG") or {}).get("a")), 2)
+            top_h = top_a = None
+            try:
+                roster = understat.match(match=str(mid)).get_roster_data()
+                # roster is {h:{pid:{...}}, a:{pid:{...}}}
+                def _best(side):
+                    rows = list((roster.get(side) or {}).values())
+                    if not rows:
+                        return None
+                    def _score(r):
+                        return (int(_f(r.get("goals"))) + int(_f(r.get("assists"))),
+                                _f(r.get("xG")) + _f(r.get("xA")))
+                    best = max(rows, key=_score)
+                    return {"name": best.get("player"),
+                            "g": int(_f(best.get("goals"))),
+                            "a": int(_f(best.get("assists"))),
+                            "xgi": round(_f(best.get("xG")) + _f(best.get("xA")), 2)}
+                top_h = _best("h"); top_a = _best("a")
+            except Exception:
+                pass
+            out.append({
+                "home": UNDERSTAT_TEAM.get(h, h), "away": UNDERSTAT_TEAM.get(a, a),
+                "hs": hs, "as": as_, "hxg": hxg, "axg": axg,
+                "datetime": m.get("datetime"),
+                "top_home": top_h, "top_away": top_a,
+            })
+    return out
+
+
 def main() -> int:
     app_url = os.environ.get("APP_URL", "").rstrip("/")
     token = os.environ.get("CRON_TOKEN", "")
@@ -243,6 +293,18 @@ def main() -> int:
             print("POST /ingest/team-stats ->", rt.status_code, rt.text[:200])
     except Exception as exc:  # noqa: BLE001
         print(f"Team-stats scrape skipped: {exc}", file=sys.stderr)
+
+    # --- per-match details (scores + xG + top performers) for the Matches page
+    try:
+        md = scrape_match_details(max_matches=10)
+        print(f"Scraped match details for {len(md)} matches")
+        if md:
+            rm = requests.post(f"{app_url}/ingest/match-details",
+                               params={"token": token},
+                               json={"matches": md}, timeout=60)
+            print("POST /ingest/match-details ->", rm.status_code, rm.text[:200])
+    except Exception as exc:  # noqa: BLE001
+        print(f"Match-details scrape skipped: {exc}", file=sys.stderr)
 
     # --- all-time head-to-head records (best-effort; failure won't fail the job)
     try:
