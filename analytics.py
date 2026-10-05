@@ -787,28 +787,163 @@ def _fixture_ease_for(player_pos: str, opp_ranks: dict, venue: str) -> float:
     return {0: 1.15, 1: 1.0, 2: 0.82}[d]
 
 
+def _weighted_per90(player, key_season):
+    """Blend a per-90 rate: 60% season total/90, 40% recent form proxy.
+    FPL only gives season totals, so we approximate 'recent' via the ratio of
+    form to ppg (hot players get a modest uplift). Keeps it grounded."""
+    mins = player.get("minutes", 0) or 0
+    if mins < 60:
+        return 0.0
+    season_total = float(player.get(key_season, 0) or 0)
+    per90 = season_total / (mins / 90.0)
+    # recent-form tilt: if form > ppg the player is trending up, nudge up to +25%
+    ppg = float(player.get("ppg", 0) or 0)
+    form = float(player.get("form", 0) or 0)
+    if ppg > 0:
+        tilt = max(0.75, min(1.25, 0.6 + 0.4 * (form / ppg)))
+    else:
+        tilt = 1.0
+    return per90 * tilt
+
+
+def _x_appearance(player):
+    """Expected appearance points from P(60+) and P(1-59).
+    Derives start/sub probabilities from avg minutes, starts ratio and
+    availability status. Returns (points, p60, conf)."""
+    avg_min = float(player.get("avg_min", 0) or 0)
+    ninetys = float(player.get("ninetys", 0) or 0)
+    starts = float(player.get("starts", 0) or 0)
+    status = player.get("status", "a")
+    chance = player.get("chance")
+
+    # Base probability of starting from how many minutes they average + starts.
+    if avg_min >= 80:
+        p_start = 0.90
+    elif avg_min >= 65:
+        p_start = 0.75
+    elif avg_min >= 45:
+        p_start = 0.50
+    elif avg_min >= 20:
+        p_start = 0.25
+    else:
+        p_start = 0.10
+    # more starts = more secure
+    if ninetys >= 4 and starts >= 4:
+        p_start = min(0.97, p_start + 0.05)
+    # availability overrides
+    if status in ("i", "s", "u"):
+        p_start = 0.0
+    elif status == "d":
+        p_start *= 0.5
+    if chance is not None:
+        try:
+            p_start *= max(0.0, min(1.0, float(chance) / 100.0))
+        except (TypeError, ValueError):
+            pass
+
+    # P(60+) ~ most of p_start; P(1-59) ~ subs + early-subbed starters
+    p60 = p_start * 0.92
+    p_1_59 = p_start * 0.08 + (0.15 if (avg_min and avg_min < 65 and status == "a") else 0.0)
+    p_1_59 = min(p_1_59, 1 - p60)
+    pts = p60 * 2 + p_1_59 * 1
+    return pts, p60, p_start
+
+
+def _x_goals(player, opp, venue, league_xga, pos):
+    """Expected goal points: weighted xG/90 x minutes-share x fixture x position."""
+    p60_share = 1.0  # applied via appearance-scaled minutes outside
+    xg90 = _weighted_per90(player, "xg")
+    opp_factor = _attack_multiplier(opp, venue, league_xga)  # 0.35-1.8 continuous
+    exp_goals = xg90 * opp_factor
+    return exp_goals, exp_goals * _GOAL_PTS.get(pos, 4)
+
+
+def _x_assists(player, opp, venue, league_xga):
+    xa90 = _weighted_per90(player, "xa")
+    opp_factor = _attack_multiplier(opp, venue, league_xga)
+    exp_assists = xa90 * opp_factor
+    return exp_assists, exp_assists * 3
+
+
+def _x_clean_sheet(cs_prob, pos):
+    """CS points from probability. GK/DEF=4, MID=1, FWD=0."""
+    return cs_prob * _CS_PTS.get(pos, 0)
+
+
+def _x_defcon(player, pos, p60):
+    """Expected DefCon points: P(hitting threshold) x 2.
+    Threshold 10 (DEF) / 12 (MID,FWD). We approximate P(threshold) from the
+    player's per-90 defcon vs the threshold, scaled by minutes security."""
+    if pos not in ("DEF", "MID", "FWD"):
+        return 0.0, 0.0
+    dc90 = float(player.get("defcon_pg", 0) or 0)
+    threshold = 10 if pos == "DEF" else 12
+    if dc90 <= 0:
+        return 0.0, 0.0
+    # logistic-ish: ratio of expected actions to threshold
+    ratio = dc90 / threshold
+    p_hit = max(0.0, min(0.95, (ratio - 0.6) / 0.6)) if ratio > 0.6 else 0.0
+    p_hit *= p60  # only counts if they play enough
+    return p_hit, p_hit * 2.0
+
+
+def _x_saves(player, opp, venue, pos, p60):
+    """GK save points: expected saves / 3. Estimate saves from opponent attack."""
+    if pos != "GK":
+        return 0.0, 0.0
+    saves = float(player.get("saves", 0) or 0)
+    ninetys = float(player.get("ninetys", 0) or 0)
+    if ninetys <= 0:
+        return 0.0, 0.0
+    saves90 = saves / ninetys
+    # opponent attack tilts expected shots faced
+    opp_att = opp.get("attack", 50) / 50.0  # ~1.0 average, higher = more shots
+    exp_saves = saves90 * (0.85 + 0.3 * (opp_att - 1)) * p60
+    return exp_saves, exp_saves / 3.0
+
+
+def _x_bonus(player, exp_goals, exp_assists, cs_prob, pos, p60):
+    """Approximate expected bonus from projected involvement + a BPS-form proxy.
+    Not a full BPS model (FPL only gives season BPS); this scales by projected
+    attacking returns, clean-sheet likelihood and the player's season BPS rate."""
+    ninetys = float(player.get("ninetys", 0) or 0)
+    bps = float(player.get("bps", 0) or 0)
+    bps90 = (bps / ninetys) if ninetys > 0 else 0.0
+    # a high BPS/90 (>22) player regularly earns bonus; map to an expected value
+    base = max(0.0, (bps90 - 14) / 16.0)  # ~0 at 14 bps/90, ~0.5 at 22
+    base = min(0.9, base)
+    # attacking involvement adds bonus likelihood
+    invo = (exp_goals + exp_assists)
+    attack_bonus = min(1.2, invo * 0.8)
+    cs_bonus = cs_prob * 0.3 if pos in ("GK", "DEF") else 0.0
+    xbonus = (base + attack_bonus + cs_bonus) * p60
+    return min(xbonus, 2.2)  # cap sensibly
+
+
+def _x_cards(player, p60):
+    """Expected card deduction: P(yellow)*1 + P(red)*3 (negative)."""
+    ninetys = float(player.get("ninetys", 0) or 0)
+    if ninetys <= 0:
+        return 0.0
+    yc90 = (float(player.get("yellow_cards", 0) or 0)) / ninetys
+    rc90 = (float(player.get("red_cards", 0) or 0)) / ninetys
+    p_yellow = min(0.6, yc90)
+    p_red = min(0.1, rc90)
+    return -(p_yellow * 1 + p_red * 3) * p60
+
+
 def expected_points(players: list, rankings: dict, fixtures: dict,
                     gw: int) -> list:
     """
-    Project each player's points for a single gameweek (xPts).
+    Component-based xPts (FPL IQ v2):
 
-    Two signals are BLENDED so projections stay grounded in reality:
+      xPts = xAppearance + xGoals + xAssists + xCleanSheet
+             + xDefCon + xSaves + xBonus - xCards
 
-      1. BOTTOM-UP model (opportunity):
-           appearance (minutes security)
-           + attacking returns (xGI/90 -> goals+assists, fixture-scaled)
-           + defensive returns (clean-sheet chance + DefCon)
-           + set-piece bonus
-      2. FORM ANCHOR (actual returns):
-           the player's real points-per-game (FPL ppg) blended with recent
-           form, then adjusted UP for easy fixtures / DOWN for hard ones.
-
-    Final xPts = blend of the two, weighted toward the form anchor for players
-    with a meaningful sample. This stops low-return fringe players (e.g. a
-    rotation midfielder returning ~1/wk) from projecting like nailed starters
-    just because a small xGI sample and a soft fixture lined up.
-
-    Weights live here and are easy to tune.
+    Each component is an EXPECTED VALUE from the probability of the scoring
+    event, not a blended heuristic — mirroring how serious FPL models work.
+    Also returns a per-component breakdown and a confidence % (driven by
+    minutes security + sample size) on each player.
     """
     league_xga = _league_avg(rankings, "xga")
     league_xg = _league_avg(rankings, "xg")
@@ -821,59 +956,43 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         pos = p.get("position", "MID")
         opp = rankings[fx["opponent"]]
         venue = fx["venue"]
-        mins = p.get("minutes", 0)
-        avg_min = p.get("avg_min", 0) or 0
-        secure = max(0.0, min(1.0, avg_min / 80.0))
-        if mins < 45:
-            secure *= 0.4
-        appearance = 2.0 * secure
 
-        # CONTINUOUS fixture multipliers from the opponent's real xGA/xG
-        att_mult = _attack_multiplier(opp, venue, league_xga)
-        cs_mult = _cs_multiplier(opp, venue, league_xg)
+        # Appearance + minutes security
+        x_app, p60, p_start = _x_appearance(p)
 
-        # --- (1) BOTTOM-UP opportunity model ---
-        xgi90 = p.get("xgi_pg", 0) or 0
-        goal_share = 0.6
-        exp_goals = xgi90 * goal_share * att_mult * secure
-        exp_assists = xgi90 * (1 - goal_share) * att_mult * secure
-        att_pts = exp_goals * _GOAL_PTS.get(pos, 4) + exp_assists * 3
+        # Attacking (scaled by how likely they play 60+)
+        egoals, x_goal_pts = _x_goals(p, opp, venue, league_xga, pos)
+        eassists, x_assist_pts = _x_assists(p, opp, venue, league_xga)
+        x_goal_pts *= p60
+        x_assist_pts *= p60
+        egoals *= p60
+        eassists *= p60
+        # set-piece uplift
         if p.get("pen_order") == 1:
-            att_pts += 0.6 * att_mult
+            x_goal_pts += 0.5 * p60
         elif p.get("ck_order") == 1 or p.get("fk_order") == 1:
-            att_pts += 0.2 * att_mult
+            x_assist_pts += 0.3 * p60
 
-        base_cs = 0.30
-        cs_prob = max(0.03, min(0.65, base_cs * cs_mult))
-        def_pts = cs_prob * _CS_PTS.get(pos, 0) * secure
-        if p.get("defcon_pg", 0) >= 10 and pos in ("DEF", "MID"):
-            def_pts += 2.0 * secure
+        # Clean sheet (uses the model+market CS probability helper's logic)
+        cs_mult = _cs_multiplier(opp, venue, league_xg)
+        cs_prob = max(0.03, min(0.70, 0.30 * cs_mult))
+        x_cs_pts = _x_clean_sheet(cs_prob, pos) * p60
 
-        model_xpts = appearance + att_pts + def_pts
+        # DefCon, Saves, Bonus, Cards
+        _, x_defcon_pts = _x_defcon(p, pos, p60)
+        _, x_saves_pts = _x_saves(p, opp, venue, pos, p60)
+        x_bonus_pts = _x_bonus(p, egoals, eassists, cs_prob, pos, p60)
+        x_card_pts = _x_cards(p, p60)
 
-        # --- (2) FORM ANCHOR: real points-per-game, fixture-adjusted ---
-        ppg = float(p.get("ppg", 0) or 0)        # season points per appearance
-        form = float(p.get("form", 0) or 0)      # recent (~last 4) points/game
+        xpts = (x_app + x_goal_pts + x_assist_pts + x_cs_pts
+                + x_defcon_pts + x_saves_pts + x_bonus_pts + x_card_pts)
+        xpts = round(max(0.0, xpts), 1)
+
+        # Confidence: minutes certainty dominates; sample size + status.
         ninetys = float(p.get("ninetys", 0) or 0)
-        # Weight recent form a bit more than season ppg when we have both.
-        if ppg and form:
-            base_return = 0.45 * ppg + 0.55 * form
-        else:
-            base_return = form or ppg
-        # Adjust the actual-return baseline by fixture ease. Attackers/mids are
-        # swung by the opponent's defence (att_mult), defenders/keepers by the
-        # opponent's attack (cs_mult). Dampen the swing (0.5) so form stays the
-        # dominant term — a soft fixture lifts it, a tough one trims it.
-        fix_adj = att_mult if pos in ("MID", "FWD") else cs_mult
-        swing = 1.0 + 0.5 * (fix_adj - 1.0)
-        anchor_xpts = base_return * swing * (0.6 + 0.4 * secure)
-
-        # --- Blend: lean on the form anchor once a player has a real sample ---
-        # sample_conf 0..1 grows with minutes played (90s). A player with <~3
-        # full games leans more on the opportunity model (less history to trust).
-        sample_conf = max(0.0, min(1.0, ninetys / 6.0))
-        w_anchor = 0.35 + 0.45 * sample_conf      # 0.35 (tiny sample) .. 0.80
-        xpts = round(w_anchor * anchor_xpts + (1 - w_anchor) * model_xpts, 1)
+        mins_cert = min(1.0, p_start + 0.05)
+        sample_cert = min(1.0, ninetys / 5.0)
+        conf = round(100 * (0.6 * mins_cert + 0.4 * sample_cert))
 
         rel_cat = "gs" if pos in ("MID", "FWD") else "cs"
         d = _difficulty(rel_cat, opp, venue)
@@ -882,6 +1001,14 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
             "price": p.get("price", 0), "opp": CODE.get(fx["opponent"], fx["opponent"][:3]),
             "venue": venue, "xpts": xpts, "fix_d": d,
             "form": p.get("form", 0), "selected_by": p.get("selected_by", 0),
+            "id": p.get("id"),
+            "confidence": conf,
+            "components": {
+                "appearance": round(x_app, 2), "goals": round(x_goal_pts, 2),
+                "assists": round(x_assist_pts, 2), "clean_sheet": round(x_cs_pts, 2),
+                "defcon": round(x_defcon_pts, 2), "saves": round(x_saves_pts, 2),
+                "bonus": round(x_bonus_pts, 2), "cards": round(x_card_pts, 2),
+            },
         })
     out.sort(key=lambda x: -x["xpts"])
     return out

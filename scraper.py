@@ -335,6 +335,12 @@ def build_player_prices(bootstrap: dict) -> list[dict]:
             "cost_change_start": (p.get("cost_change_start") or 0) / 10.0,
             "transfers_in_event": p.get("transfers_in_event", 0),
             "transfers_out_event": p.get("transfers_out_event", 0),
+            # saves / cards / BPS — for the component xPts model (GK saves,
+            # card deductions, bonus-point projection).
+            "saves": p.get("saves", 0) or 0,
+            "yellow_cards": p.get("yellow_cards", 0) or 0,
+            "red_cards": p.get("red_cards", 0) or 0,
+            "bps": p.get("bps", 0) or 0,
             # availability
             "status": p.get("status", "a"),  # a=available i=injured s=susp d=doubt u=unavail
             "chance": p.get("chance_of_playing_next_round"),
