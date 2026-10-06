@@ -97,21 +97,21 @@ def init_db() -> None:
     if USE_PG:
         conn = _pg_conn()
         try:
-            # Base tables in one transaction.
-            with conn, conn.cursor() as cur:
+            # Use autocommit so every statement is committed independently —
+            # a pre-existing table missing columns gets ALTERed reliably, and
+            # one failed statement can never poison the rest of the batch.
+            conn.autocommit = True
+            with conn.cursor() as cur:
                 for stmt in ddl:
-                    cur.execute(stmt)
-            # Each migration in its OWN transaction so one failure can't roll
-            # back the others (ADD COLUMN IF NOT EXISTS is safe to re-run).
-            for stmt in pg_migrations:
-                try:
-                    with conn, conn.cursor() as cur:
-                        cur.execute(stmt)
-                except Exception:
                     try:
-                        conn.rollback()
-                    except Exception:
-                        pass
+                        cur.execute(stmt)
+                    except Exception as e:
+                        print(f"[init_db] DDL skipped: {e}")
+                for stmt in pg_migrations:
+                    try:
+                        cur.execute(stmt)
+                    except Exception as e:
+                        print(f"[init_db] migration skipped: {stmt[:60]}... -> {e}")
         finally:
             conn.close()
     else:
