@@ -61,6 +61,33 @@ def inject_settings():
             "pro_price": billing.pro_price()}
 
 
+# Build the GW-history index once per request and hand it to the analytics
+# engine so every xPts call uses real recent-form blends. Cached on the app
+# object with the max logged GW as a cheap freshness key to avoid re-reading
+# the whole table on every request.
+_HISTORY_IDX = {"key": None, "data": {}}
+
+
+@app.before_request
+def _load_history_cache():
+    try:
+        cov = models.gw_history_coverage()
+        key = (cov.get("rows"), cov.get("max_gw"))
+        if key != _HISTORY_IDX["key"]:
+            rows = models.load_gw_history()  # newest gw first (ORDER BY gw DESC)
+            idx = {}
+            for r in rows:
+                el = r.get("element")
+                if el is None:
+                    continue
+                idx.setdefault(el, []).append(r)
+            _HISTORY_IDX["key"] = key
+            _HISTORY_IDX["data"] = idx
+        analytics.set_history_cache(_HISTORY_IDX["data"])
+    except Exception:
+        analytics.set_history_cache({})
+
+
 def current_user():
     """Return the logged-in user's {id, email} from the session, or None."""
     uid = session.get("uid")

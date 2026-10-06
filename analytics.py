@@ -14,6 +14,18 @@ from __future__ import annotations
 
 from typing import Any
 
+# Optional per-request GW-history cache. The app sets this once per request
+# (set_history_cache) so every expected_points call picks up recent-form blends
+# without threading the dict through every call site. Falls back cleanly to {}.
+_HISTORY_CACHE: dict = {}
+
+
+def set_history_cache(history_by_element: dict | None) -> None:
+    """App layer calls this once per request with {element: [gw rows newest-first]}."""
+    global _HISTORY_CACHE
+    _HISTORY_CACHE = history_by_element or {}
+
+
 CANONICAL_TEAMS = [
     "Arsenal", "Aston Villa", "Bournemouth", "Brentford", "Brighton",
     "Chelsea", "Coventry", "Crystal Palace", "Everton", "Fulham",
@@ -787,6 +799,56 @@ def _fixture_ease_for(player_pos: str, opp_ranks: dict, venue: str) -> float:
     return {0: 1.15, 1: 1.0, 2: 0.82}[d]
 
 
+def _rate_from_history(rows, stat_key, n_recent):
+    """Per-90 rate of `stat_key` over the most recent `n_recent` GWs with
+    minutes. rows are per-GW dicts (newest first). Returns None if no usable
+    minutes in the window so the caller can fall back."""
+    if not rows:
+        return None
+    total_stat, total_mins = 0.0, 0.0
+    used = 0
+    for r in rows:
+        if used >= n_recent:
+            break
+        mins = float(r.get("minutes", 0) or 0)
+        if mins <= 0:
+            continue
+        total_stat += float(r.get(stat_key, 0) or 0)
+        total_mins += mins
+        used += 1
+    if total_mins <= 0:
+        return None
+    return total_stat / (total_mins / 90.0)
+
+
+def _blended_per90(player, key_season, hist_rows):
+    """FPL IQ recent-form blend of a per-90 rate (xg/xa), per the model spec:
+        40% season + 30% last-6 + 20% last-10 + 10% prev-season
+    Uses REAL per-GW history (hist_rows, newest first) when available; weights
+    re-normalise over whichever windows have data. Falls back to the season/
+    form proxy (_weighted_per90) when there's no history yet.
+    """
+    mins = player.get("minutes", 0) or 0
+    season_total = float(player.get(key_season, 0) or 0)
+    season90 = (season_total / (mins / 90.0)) if mins >= 60 else None
+
+    last6 = _rate_from_history(hist_rows, key_season, 6) if hist_rows else None
+    last10 = _rate_from_history(hist_rows, key_season, 10) if hist_rows else None
+    prev = float(player.get(key_season + "_prev", 0) or 0) or None  # not usually available
+
+    parts = []
+    if season90 is not None: parts.append((season90, 0.40))
+    if last6 is not None:    parts.append((last6, 0.30))
+    if last10 is not None:   parts.append((last10, 0.20))
+    if prev is not None:     parts.append((prev, 0.10))
+
+    if not parts:
+        # No usable data at all — fall back to the proxy blend.
+        return _weighted_per90(player, key_season)
+    tw = sum(w for _, w in parts)
+    return sum(v * w for v, w in parts) / tw
+
+
 def _weighted_per90(player, key_season):
     """Blend a per-90 rate: 60% season total/90, 40% recent form proxy.
     FPL only gives season totals, so we approximate 'recent' via the ratio of
@@ -849,17 +911,17 @@ def _x_appearance(player):
     return pts, p60, p_start
 
 
-def _x_goals(player, opp, venue, league_xga, pos):
-    """Expected goal points: weighted xG/90 x minutes-share x fixture x position."""
-    p60_share = 1.0  # applied via appearance-scaled minutes outside
-    xg90 = _weighted_per90(player, "xg")
+def _x_goals(player, opp, venue, league_xga, pos, hist_rows=None):
+    """Expected goal points: blended xG/90 (season + recent-form from GW
+    history) x fixture x position."""
+    xg90 = _blended_per90(player, "xg", hist_rows)
     opp_factor = _attack_multiplier(opp, venue, league_xga)  # 0.35-1.8 continuous
     exp_goals = xg90 * opp_factor
     return exp_goals, exp_goals * _GOAL_PTS.get(pos, 4)
 
 
-def _x_assists(player, opp, venue, league_xga):
-    xa90 = _weighted_per90(player, "xa")
+def _x_assists(player, opp, venue, league_xga, hist_rows=None):
+    xa90 = _blended_per90(player, "xa", hist_rows)
     opp_factor = _attack_multiplier(opp, venue, league_xga)
     exp_assists = xa90 * opp_factor
     return exp_assists, exp_assists * 3
@@ -933,7 +995,7 @@ def _x_cards(player, p60):
 
 
 def expected_points(players: list, rankings: dict, fixtures: dict,
-                    gw: int) -> list:
+                    gw: int, history_by_element: dict | None = None) -> list:
     """
     Component-based xPts (FPL IQ v2):
 
@@ -957,12 +1019,19 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         opp = rankings[fx["opponent"]]
         venue = fx["venue"]
 
+        # Per-GW history for this player (newest first) — powers recent-form
+        # blends in the attacking components. Empty if not logged yet.
+        hist_rows = None
+        _hist = history_by_element if history_by_element is not None else _HISTORY_CACHE
+        if _hist:
+            hist_rows = _hist.get(p.get("id"))
+
         # Appearance + minutes security
         x_app, p60, p_start = _x_appearance(p)
 
         # Attacking (scaled by how likely they play 60+)
-        egoals, x_goal_pts = _x_goals(p, opp, venue, league_xga, pos)
-        eassists, x_assist_pts = _x_assists(p, opp, venue, league_xga)
+        egoals, x_goal_pts = _x_goals(p, opp, venue, league_xga, pos, hist_rows)
+        eassists, x_assist_pts = _x_assists(p, opp, venue, league_xga, hist_rows)
         x_goal_pts *= p60
         x_assist_pts *= p60
         egoals *= p60
