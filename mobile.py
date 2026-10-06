@@ -135,6 +135,8 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
         "opportunities": [],   # best xPts players NOT already in the squad
         "transfer_gain": None, # +xPts the recommended transfer adds (if known)
         "outlook": [],
+        "fixture_targets": [], # teams with the best upcoming fixture run
+        "fixture_gws": [],     # the GW labels for the ticker columns
     }
 
     squad_names = {m.get("name", "").lower() for m in squad}
@@ -226,6 +228,24 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
                 out["transfer_gain"] = rec["gain"]
         except Exception:
             pass
+
+    # --- Fixture Difficulty: teams with the best clean-sheet fixture run over
+    # the next 5 GWs (mobile version of the desktop "Teams to Target"). ---
+    try:
+        gw_to = min(gw + 4, 38)
+        tables = analytics.build_target_tables(rankings, fixtures, gw, gw_to)
+        cs_rows = tables.get("cs", [])[:6]
+        gws_lbl = [f"GW{g}" for g in range(gw, gw_to + 1)]
+        targets = []
+        for r in cs_rows:
+            chips = [{"code": fxc["code"], "venue": fxc["venue"], "d": fxc["d"]}
+                     for fxc in r.get("fixtures", [])]
+            targets.append({"team": r["team"], "easy_n": r.get("easy_n", 0),
+                            "avg_fdr": r.get("avg_fdr", 0), "chips": chips})
+        out["fixture_targets"] = targets
+        out["fixture_gws"] = gws_lbl
+    except Exception:
+        pass
 
     # --- Gameweek outlook: next 6 GWs average fixture ease for the squad ---
     try:
