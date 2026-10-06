@@ -43,6 +43,8 @@
   .plist .rk{width:18px;font-weight:900;color:var(--muted);font-size:12px;font-family:monospace}
   .plist .nm{font-size:14px;font-weight:800}.plist .tm{font-size:10px;color:var(--muted)}
   .plist .v{margin-left:auto;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
+
+  .verdict-badge{text-align:center;font-size:14px;font-weight:900;padding:10px;border-radius:10px;background:var(--surface2);color:var(--accent);margin-bottom:12px}
 </style>
 
 <div class="backbar" style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
@@ -73,6 +75,7 @@
 
     {% if result.kind == 'transfer' and result.comparison %}
       {% set c = result.comparison %}
+      {% if c.verdict %}<div class="verdict-badge">{{ c.verdict }} · {{ '+' if c.diff_total>0 }}{{ c.diff_total }} xPts</div>{% endif %}
       <div class="vs">
         <div class="side {{ 'win' if c.diff_total <= 0 }}">
           <div class="nm">{{ c.a.name }}</div><div class="tm">{{ c.a.team }}</div>

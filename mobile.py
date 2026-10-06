@@ -1052,14 +1052,22 @@ def ask_fpl_iq(question, snap, players=None, gw_from=None, gw_to=None):
                             "diff": round(bv - av, 1)})
             diff_total = round(b["total_xpts"] - a["total_xpts"], 1)
             better = b if diff_total > 0 else a
+            # Transfer-decision verdict (gain = B - A over the horizon).
+            # Hits -4 if it would cost a point hit; here we show the raw gain
+            # and a verdict band so it reads as a real decision, not a ranking.
+            verdict = ("\u2705 Do it" if diff_total >= 2
+                       else "\u2696\ufe0f Marginal" if diff_total >= 0
+                       else "\u270b Hold")
             out.update({
                 "ok": True, "kind": "transfer",
-                "answer": (f"{'Yes' if diff_total > 0 else 'No'} \u2014 "
-                           f"{better['name']} projects higher over GW{gw_from}\u2013{gw_to}."),
-                "detail": (f"{b['name']} is projected {abs(diff_total)} pts "
-                           f"{'more' if diff_total > 0 else 'fewer'} than {a['name']} "
-                           f"across these {gw_to - gw_from + 1} gameweeks."),
-                "comparison": {"a": a, "b": b, "per_gw": per, "diff_total": diff_total},
+                "answer": (f"{better['name']} projects higher over "
+                           f"GW{gw_from}\u2013{gw_to} \u2014 {verdict}."),
+                "detail": (f"{b['name']} {b['total_xpts']} vs {a['name']} "
+                           f"{a['total_xpts']} xPts over {gw_to - gw_from + 1} GWs "
+                           f"({'+' if diff_total > 0 else ''}{diff_total}). A point hit "
+                           f"(-4) would need a gain above ~4 to be worth it."),
+                "comparison": {"a": a, "b": b, "per_gw": per, "diff_total": diff_total,
+                               "verdict": verdict},
             })
             return out
         out["note"] = ("I couldn\u2019t match both players. Try full surnames, "
