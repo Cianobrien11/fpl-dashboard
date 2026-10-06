@@ -457,6 +457,18 @@ def m_matches():
     return render_template("m_matches.html", tab="matches", **data)
 
 
+@app.route("/app/accuracy")
+def m_accuracy():
+    snap = _ensure_data()
+    try:
+        history = models.load_gw_history()
+    except Exception:
+        history = []
+    data = mobile.backtest_payload(snap, history)
+    return render_template("m_accuracy.html", tab="analytics",
+                           gw=snap.get("next_gw"), **data)
+
+
 # ---------------------------------------------------------------------------
 # AUTH — signup / verify / login / logout. Sessions store the logged-in user.
 # ---------------------------------------------------------------------------

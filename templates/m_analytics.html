@@ -70,7 +70,7 @@
     <div class="d">Predicted scorelines & recent results.</div>
   </a>
   {% for s in sections %}
-  <a class="acard" href="{{ url_for('m_analytics_sub', section=s.key) }}">
+  <a class="acard" href="{{ url_for('m_accuracy') if s.key=='accuracy' else url_for('m_analytics_sub', section=s.key) }}">
     <div class="ic">{{ s.icon }}</div>
     <div class="t">{{ s.title }}</div>
     <div class="d">{{ s.desc }}</div>

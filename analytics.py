@@ -1433,3 +1433,146 @@ def squad_fixture_history(squad: list, h2h: dict, fixtures: dict,
     order = {"FWD": 0, "MID": 1, "DEF": 2, "GK": 3}
     rows.sort(key=lambda r: order.get(r["position"], 4))
     return {"gws": [f"GW{g}" for g in gws], "rows": rows}
+
+
+# ==========================================================================
+# BACKTESTING — measure the xPts model against real outcomes using GW history.
+# Reconstructs each player's state as-of-before a target GW from the logged
+# per-GW history, predicts that GW, and scores vs the actual points scored.
+# ==========================================================================
+def _player_state_before(element, rows_sorted_asc, upto_gw, rankings, fixtures):
+    """Build an approximate player dict (season-to-date up to upto_gw-1) from
+    history rows (ascending by gw). Returns (player_dict, hist_newest_first)."""
+    prior = [r for r in rows_sorted_asc if r.get("gw", 0) < upto_gw]
+    if not prior:
+        return None, None
+    mins = sum(float(r.get("minutes", 0) or 0) for r in prior)
+    if mins <= 0:
+        return None, None
+    starts = sum(1 for r in prior if float(r.get("minutes", 0) or 0) >= 60)
+    pts = sum(float(r.get("total_points", 0) or 0) for r in prior)
+    games = len(prior)
+    last = prior[-1]
+    player = {
+        "id": element, "name": last.get("name"), "team": last.get("team"),
+        "position": last.get("position", "MID"),
+        "minutes": mins, "starts": starts, "ninetys": round(mins / 90.0, 1),
+        "avg_min": round(mins / max(games, 1), 0),
+        "ppg": round(pts / max(games, 1), 2),
+        "form": round(sum(float(r.get("total_points", 0) or 0) for r in prior[-4:]) / min(4, games), 2),
+        "status": "a",
+        "xg": sum(float(r.get("xg", 0) or 0) for r in prior),
+        "xa": sum(float(r.get("xa", 0) or 0) for r in prior),
+        "xgi": sum(float(r.get("xgi", 0) or 0) for r in prior),
+        "defcon": sum(float(r.get("defcon", 0) or 0) for r in prior),
+        "defcon_pg": round(sum(float(r.get("defcon", 0) or 0) for r in prior) / (mins / 90.0), 2) if mins else 0,
+        "bps": sum(float(r.get("bps", 0) or 0) for r in prior),
+        "bonus": sum(int(r.get("bonus", 0) or 0) for r in prior),
+        "saves": sum(float(r.get("saves", 0) or 0) for r in prior),
+        "yellow_cards": sum(int(r.get("yellow_cards", 0) or 0) for r in prior),
+        "red_cards": sum(int(r.get("red_cards", 0) or 0) for r in prior),
+    }
+    hist_newest_first = list(reversed(prior))
+    return player, hist_newest_first
+
+
+def backtest_gameweek(history_rows, rankings, fixtures, target_gw,
+                      min_minutes=60):
+    """Backtest the xPts model for one past gameweek.
+
+    history_rows: all gw_history dicts. rankings/fixtures: current snapshot
+    (used for opponent strength — an approximation, since we don't store
+    point-in-time rankings). target_gw: the GW to predict & score.
+
+    Returns a metrics dict: n, mae, rmse, within_1, within_2, correlation,
+    top10_hit (overlap of predicted top-10 vs actual top-10), and a sample of
+    the biggest misses.
+    """
+    # index history by element, ascending by gw
+    by_el = {}
+    for r in history_rows:
+        by_el.setdefault(r.get("element"), []).append(r)
+    for el in by_el:
+        by_el[el].sort(key=lambda r: r.get("gw", 0))
+
+    # actual points scored in target_gw, per element
+    actual = {}
+    for r in history_rows:
+        if r.get("gw") == target_gw:
+            actual[r.get("element")] = float(r.get("total_points", 0) or 0)
+    if not actual:
+        return {"ok": False, "error": f"No actual data for GW{target_gw}."}
+
+    preds, acts, names = [], [], []
+    for el, act in actual.items():
+        rows = by_el.get(el, [])
+        player, hist = _player_state_before(el, rows, target_gw, rankings, fixtures)
+        if not player:
+            continue
+        # need a fixture for this player's team in target_gw
+        res = expected_points([player], rankings, fixtures, target_gw,
+                              history_by_element={el: hist})
+        if not res:
+            continue
+        preds.append(res[0]["xpts"]); acts.append(act); names.append(player.get("name"))
+
+    n = len(preds)
+    if n < 5:
+        return {"ok": False, "error": f"Too few comparable players for GW{target_gw} (got {n})."}
+
+    errs = [p - a for p, a in zip(preds, acts)]
+    abs_errs = [abs(e) for e in errs]
+    mae = sum(abs_errs) / n
+    rmse = (sum(e * e for e in errs) / n) ** 0.5
+    within1 = 100 * sum(1 for e in abs_errs if e <= 1) / n
+    within2 = 100 * sum(1 for e in abs_errs if e <= 2) / n
+    # correlation
+    mp, ma = sum(preds) / n, sum(acts) / n
+    cov = sum((p - mp) * (a - ma) for p, a in zip(preds, acts))
+    sp = (sum((p - mp) ** 2 for p in preds)) ** 0.5
+    sa = (sum((a - ma) ** 2 for a in acts)) ** 0.5
+    corr = (cov / (sp * sa)) if sp and sa else 0.0
+    # top-10 overlap
+    order_pred = sorted(range(n), key=lambda i: -preds[i])[:10]
+    order_act = sorted(range(n), key=lambda i: -acts[i])[:10]
+    top10 = len(set(order_pred) & set(order_act))
+    # biggest misses
+    idx_sorted = sorted(range(n), key=lambda i: -abs_errs[i])[:5]
+    misses = [{"name": names[i], "pred": round(preds[i], 1),
+               "actual": round(acts[i], 1), "err": round(errs[i], 1)} for i in idx_sorted]
+
+    return {
+        "ok": True, "gw": target_gw, "n": n,
+        "mae": round(mae, 2), "rmse": round(rmse, 2),
+        "within_1_pct": round(within1), "within_2_pct": round(within2),
+        "correlation": round(corr, 3), "top10_hit": top10,
+        "biggest_misses": misses,
+    }
+
+
+def backtest_all(history_rows, rankings, fixtures):
+    """Run the backtest across every gameweek that has both prior history and
+    actuals. Returns per-GW metrics + an aggregate."""
+    gws = sorted({r.get("gw") for r in history_rows if r.get("gw")})
+    per_gw = []
+    for g in gws:
+        if g <= min(gws):  # need at least one prior GW
+            continue
+        m = backtest_gameweek(history_rows, rankings, fixtures, g)
+        if m.get("ok"):
+            per_gw.append(m)
+    if not per_gw:
+        return {"ok": False, "error": "Not enough history to backtest yet (need 2+ gameweeks)."}
+    tot_n = sum(m["n"] for m in per_gw)
+    agg = {
+        "ok": True,
+        "gws_tested": [m["gw"] for m in per_gw],
+        "n": tot_n,
+        "mae": round(sum(m["mae"] * m["n"] for m in per_gw) / tot_n, 2),
+        "rmse": round(sum(m["rmse"] * m["n"] for m in per_gw) / tot_n, 2),
+        "within_1_pct": round(sum(m["within_1_pct"] * m["n"] for m in per_gw) / tot_n),
+        "within_2_pct": round(sum(m["within_2_pct"] * m["n"] for m in per_gw) / tot_n),
+        "correlation": round(sum(m["correlation"] * m["n"] for m in per_gw) / tot_n, 3),
+        "per_gw": per_gw,
+    }
+    return agg

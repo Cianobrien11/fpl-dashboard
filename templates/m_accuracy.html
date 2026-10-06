@@ -1,0 +1,64 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Model Accuracy{% endblock %}
+{% block content %}
+<style>
+  .backbar{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+  .backbar a{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--muted)}
+  .backbar a svg{width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:2.5}
+  .backbar .ttl{font-size:18px;font-weight:900;margin-left:2px}
+  .acc-top{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .acc-stat{flex:1;min-width:90px;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px;text-align:center}
+  .acc-stat .v{font-size:24px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
+  .acc-stat .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+  .expl{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:14px}
+  table.bt{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.bt th{text-align:left;color:var(--muted);font-size:9.5px;text-transform:uppercase;padding:7px 6px;border-bottom:1px solid var(--border)}
+  table.bt td{padding:8px 6px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
+  .miss{display:flex;align-items:center;gap:10px;padding:8px 2px;border-bottom:1px solid var(--border);font-size:12.5px}
+  .miss:last-child{border-bottom:none}
+  .miss .nm{font-weight:700}.miss .d{margin-left:auto;font-family:monospace;color:var(--muted)}
+  .ghead{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 2px 9px}
+  .note{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;font-size:13px;color:var(--muted);line-height:1.55}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 14px;margin-bottom:12px}
+</style>
+
+<div class="backbar">
+  <a href="{{ url_for('m_analytics') }}"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Analytics</a>
+  <span class="ttl">Model Accuracy</span>
+</div>
+
+{% if ok %}
+  <div class="expl">How FPL IQ's xPts predictions compare to what actually happened, backtested across {{ gws_tested|length }} gameweek(s). Lower MAE/RMSE is better; higher correlation and within-range % are better.</div>
+  <div class="acc-top">
+    <div class="acc-stat"><div class="v">{{ mae }}</div><div class="k">MAE (avg error)</div></div>
+    <div class="acc-stat"><div class="v">{{ rmse }}</div><div class="k">RMSE</div></div>
+    <div class="acc-stat"><div class="v">{{ correlation }}</div><div class="k">Correlation</div></div>
+  </div>
+  <div class="acc-top">
+    <div class="acc-stat"><div class="v">{{ within_1_pct }}%</div><div class="k">Within ±1 pt</div></div>
+    <div class="acc-stat"><div class="v">{{ within_2_pct }}%</div><div class="k">Within ±2 pts</div></div>
+    <div class="acc-stat"><div class="v">{{ n }}</div><div class="k">Predictions</div></div>
+  </div>
+
+  <div class="ghead">Per gameweek</div>
+  <div class="card">
+    <table class="bt">
+      <tr><th>GW</th><th>Preds</th><th>MAE</th><th>±1</th><th>±2</th><th>Corr</th><th>Top10</th></tr>
+      {% for g in per_gw %}
+      <tr><td>GW{{ g.gw }}</td><td>{{ g.n }}</td><td>{{ g.mae }}</td><td>{{ g.within_1_pct }}%</td><td>{{ g.within_2_pct }}%</td><td>{{ g.correlation }}</td><td>{{ g.top10_hit }}/10</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  {% if per_gw and per_gw[-1].biggest_misses %}
+  <div class="ghead">Biggest misses · GW{{ per_gw[-1].gw }}</div>
+  <div class="card">
+    {% for m in per_gw[-1].biggest_misses %}
+    <div class="miss"><span class="nm">{{ m.name }}</span><span class="d">pred {{ m.pred }} · actual {{ m.actual }} ({{ '+' if m.err>0 }}{{ m.err }})</span></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% else %}
+  <div class="note">{{ note }}</div>
+{% endif %}
+{% endblock %}

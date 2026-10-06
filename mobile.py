@@ -754,6 +754,7 @@ def analytics_payload(snap, players=None):
             {"key": "value", "title": "Value Picks", "desc": "Best points-per-million by position.", "icon": "V"},
             {"key": "differentials", "title": "Differentials", "desc": "Low-owned, high-ceiling picks for your mini-leagues.", "icon": "D"},
             {"key": "setpieces", "title": "Set Pieces", "desc": "Penalty, free-kick and corner takers.", "icon": "S"},
+            {"key": "accuracy", "title": "Model Accuracy", "desc": "How FPL IQ's predictions score vs real results (backtested).", "icon": "✓"},
         ],
     }
 
@@ -1185,3 +1186,15 @@ def matches_payload(snap, gw=None):
             "finished": finished, "has_data": bool(snap.get("team_stats"))}
 
 
+def backtest_payload(snap, history_rows):
+    """Run the model backtest across logged gameweeks for the Accuracy page."""
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    fixtures = snap.get("fixtures", {})
+    if not history_rows:
+        return {"ok": False, "note": "No gameweek history logged yet. The daily "
+                "pipeline logs it automatically — the backtest activates once "
+                "2+ gameweeks are stored."}
+    res = analytics.backtest_all(history_rows, rankings, fixtures)
+    if not res.get("ok"):
+        return {"ok": False, "note": res.get("error", "Not enough data to backtest yet.")}
+    return {"ok": True, **res}
