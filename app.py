@@ -926,3 +926,22 @@ if __name__ == "__main__":
     models.init_db()
     _ensure_data()
     app.run(debug=True, port=5001)
+
+@app.route("/ingest/gw-history", methods=["POST"])
+def ingest_gw_history():
+    """Receive per-player per-GW history rows from the Action (FPL
+    element-summary). Idempotent per (element, gw) — safe to re-send."""
+    expected = os.environ.get("CRON_TOKEN", "")
+    if not expected or request.args.get("token") != expected:
+        abort(403)
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("history") or []
+    if not rows:
+        return jsonify({"status": "error", "reason": "no history"}), 400
+    try:
+        n = models.save_gw_history(rows)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"status": "error", "reason": str(exc)}), 500
+    return jsonify({"status": "ok", "stored": n})
+
+

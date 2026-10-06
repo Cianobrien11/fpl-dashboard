@@ -81,3 +81,13 @@ jobs:
         run: |
           python odds_action.py || echo "::warning::Odds step had a non-fatal issue; continuing."
           exit 0
+
+      - name: Log per-GW player history (accuracy foundation)
+        continue-on-error: true
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+          BACKFILL: ${{ vars.HISTORY_BACKFILL }}
+        run: |
+          python history_action.py || echo "::warning::History step had a non-fatal issue; continuing."
+          exit 0

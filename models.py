@@ -67,6 +67,10 @@ def init_db() -> None:
         "CREATE TABLE IF NOT EXISTS user_settings (user_id INTEGER PRIMARY KEY, data TEXT)",
         # per-user saved squad (user_id 0 = shared/anonymous device squad).
         "CREATE TABLE IF NOT EXISTS user_squads (user_id INTEGER PRIMARY KEY, data TEXT)",
+        # per-gameweek player history (the accuracy foundation): one row per
+        # (element, gw). Enables form blends (last-6/last-10) + backtesting.
+        f"CREATE TABLE IF NOT EXISTS gw_history (id {pk}, element INTEGER, gw INTEGER, "
+        "logged_at TEXT, data TEXT, UNIQUE(element, gw))",
     ]
     # Idempotent migrations: add columns to a pre-existing users table.
     # CREATE TABLE IF NOT EXISTS won't alter an existing table, so a users
@@ -486,3 +490,82 @@ def get_user_by_stripe_customer(customer_id: str):
              "SELECT id, email FROM users WHERE stripe_customer_id = ?",
              (customer_id,), fetch="one")
     return {"id": row[0], "email": row[1]} if row else None
+
+
+# ---------------------------------------------------------------------------
+# Per-gameweek player history — the accuracy foundation. Stores each player's
+# completed-GW stats so the model can do recent-form blends and we can backtest
+# predictions against real outcomes. Idempotent per (element, gw).
+# ---------------------------------------------------------------------------
+def save_gw_history(rows: list[dict]) -> int:
+    """Upsert a batch of per-player per-GW history rows.
+    Each row: {element, gw, ...stats...}. Returns count stored."""
+    if not rows:
+        return 0
+    init_db()
+    import datetime as _dt
+    now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    n = 0
+    if USE_PG:
+        conn = _pg_conn()
+        try:
+            with conn, conn.cursor() as cur:
+                for r in rows:
+                    el, gw = r.get("element"), r.get("gw")
+                    if el is None or gw is None:
+                        continue
+                    cur.execute(
+                        "INSERT INTO gw_history (element, gw, logged_at, data) "
+                        "VALUES (%s, %s, %s, %s) "
+                        "ON CONFLICT (element, gw) DO UPDATE SET data = EXCLUDED.data, "
+                        "logged_at = EXCLUDED.logged_at",
+                        (el, gw, now, json.dumps(r)))
+                    n += 1
+        finally:
+            conn.close()
+    else:
+        with _sqlite_conn() as c:
+            for r in rows:
+                el, gw = r.get("element"), r.get("gw")
+                if el is None or gw is None:
+                    continue
+                c.execute(
+                    "INSERT INTO gw_history (element, gw, logged_at, data) "
+                    "VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT (element, gw) DO UPDATE SET data = excluded.data, "
+                    "logged_at = excluded.logged_at",
+                    (el, gw, now, json.dumps(r)))
+                n += 1
+    return n
+
+
+def load_gw_history(element: int = None, since_gw: int = None) -> list[dict]:
+    """Load history rows, optionally filtered by player and/or min gameweek.
+    Returns a list of the stored per-GW stat dicts (newest GW first)."""
+    init_db()
+    clauses, params = [], []
+    if element is not None:
+        clauses.append("element = " + _PH); params.append(element)
+    if since_gw is not None:
+        clauses.append("gw >= " + _PH); params.append(since_gw)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    sql = "SELECT data FROM gw_history" + where + " ORDER BY gw DESC"
+    rows = _q(sql, sql, tuple(params), fetch="all") or []
+    out = []
+    for row in rows:
+        try:
+            out.append(json.loads(row[0]))
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def gw_history_coverage() -> dict:
+    """Diagnostic: how many rows and which GWs are logged."""
+    init_db()
+    row = _q("SELECT COUNT(*), MIN(gw), MAX(gw), COUNT(DISTINCT gw) FROM gw_history",
+             "SELECT COUNT(*), MIN(gw), MAX(gw), COUNT(DISTINCT gw) FROM gw_history",
+             (), fetch="one")
+    if not row:
+        return {"rows": 0, "min_gw": None, "max_gw": None, "gws": 0}
+    return {"rows": row[0] or 0, "min_gw": row[1], "max_gw": row[2], "gws": row[3] or 0}
