@@ -1205,4 +1205,12 @@ def backtest_payload(snap, history_rows):
     res = analytics.backtest_all(history_rows, rankings, fixtures)
     if not res.get("ok"):
         return {"ok": False, "note": res.get("error", "Not enough data to backtest yet.")}
+    # Plain-English interpretation of the headline metrics.
+    mae = res.get("mae", 0); corr = res.get("correlation", 0); w2 = res.get("within_2_pct", 0)
+    acc = ("very accurate" if mae <= 1.5 else "solid" if mae <= 2.2 else "rough — early-season noise")
+    rank = ("ranks players reliably" if corr >= 0.5 else
+            "ranks players reasonably" if corr >= 0.3 else "ranking is noisy so far")
+    res["interpretation"] = (f"On average predictions land within {mae} pts of the real score "
+                             f"({acc}); {w2}% within \u00b12. Correlation {corr} means the model "
+                             f"{rank}. Accuracy sharpens as more gameweeks are logged.")
     return {"ok": True, **res}

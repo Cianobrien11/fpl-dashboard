@@ -1690,8 +1690,22 @@ def team_rating(squad, players, rankings, fixtures, gw,
     }
     overall = round(0.45 * s_expected + 0.15 * s_fixtures + 0.10 * s_minutes
                     + 0.10 * s_value + 0.10 * s_structure + 0.10 * s_captaincy)
+
+    # Plain-English strength / weakness summary from the axes.
+    _labels = {"expected_points": "scoring potential", "fixtures": "fixture run",
+               "minutes": "minutes security", "value": "squad value",
+               "structure": "squad structure", "captaincy": "captaincy options"}
+    best_k = max(axes, key=lambda k: axes[k])
+    worst_k = min(axes, key=lambda k: axes[k])
+    tier = ("elite" if overall >= 80 else "strong" if overall >= 65
+            else "solid" if overall >= 50 else "work needed")
+    summary = (f"{tier.capitalize()} squad. Strongest: {_labels[best_k]} "
+               f"({axes[best_k]}). Weakest: {_labels[worst_k]} ({axes[worst_k]}) "
+               f"\u2014 the clearest area to improve.")
+
     return {"ok": True, "overall": overall, "axes": axes,
-            "projected_gw": projected_gw, "horizon": horizon}
+            "projected_gw": projected_gw, "horizon": horizon,
+            "summary": summary, "best": best_k, "worst": worst_k}
 
 
 def transfer_value(squad, players, rankings, fixtures, gw,

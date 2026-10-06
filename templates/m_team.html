@@ -80,6 +80,10 @@
   .axis-track{flex:1;height:7px;background:var(--bg);border-radius:4px;overflow:hidden}
   .axis-fill{height:100%;background:var(--accent);border-radius:4px}
   .axis-val{width:26px;text-align:right;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
+
+  .rating-summary{font-size:12.5px;color:var(--text);line-height:1.5;background:var(--surface2);border-radius:10px;padding:11px 13px;margin-bottom:14px}
+  .axtag{font-size:10px;font-weight:900}.axtag.best{color:var(--easy)}.axtag.worst{color:var(--mid)}
+  .axis-fill.is-best{background:var(--easy)}.axis-fill.is-worst{background:var(--mid)}
 </style>
 
 <div class="sec-label">My Team</div>
@@ -130,11 +134,12 @@
     <div class="rating-score">{{ rating.overall }}<small>/100</small></div>
     <div class="rating-bar"><div class="rating-fill" style="width:{{ rating.overall }}%"></div></div>
   </div>
+  {% if rating.summary %}<div class="rating-summary">{{ rating.summary }}</div>{% endif %}
   <div class="axes">
     {% for key,label in [('expected_points','Expected Pts'),('fixtures','Fixtures'),('minutes','Minutes'),('value','Value'),('structure','Structure'),('captaincy','Captaincy')] %}
     <div class="axis">
-      <div class="axis-lab">{{ label }}</div>
-      <div class="axis-track"><div class="axis-fill" style="width:{{ rating.axes[key] }}%"></div></div>
+      <div class="axis-lab">{{ label }}{% if key==rating.best %} <span class="axtag best">★</span>{% elif key==rating.worst %} <span class="axtag worst">!</span>{% endif %}</div>
+      <div class="axis-track"><div class="axis-fill {{ 'is-best' if key==rating.best else 'is-worst' if key==rating.worst }}" style="width:{{ rating.axes[key] }}%"></div></div>
       <div class="axis-val">{{ rating.axes[key] }}</div>
     </div>
     {% endfor %}

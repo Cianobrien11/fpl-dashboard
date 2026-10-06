@@ -20,6 +20,7 @@
   .ghead{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 2px 9px}
   .note{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;font-size:13px;color:var(--muted);line-height:1.55}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 14px;margin-bottom:12px}
+  .interp{font-size:12.5px;color:var(--text);line-height:1.55;background:var(--surface2);border-radius:10px;padding:12px 14px;margin:4px 0 14px}
 </style>
 
 <div class="backbar">
@@ -39,6 +40,8 @@
     <div class="acc-stat"><div class="v">{{ within_2_pct }}%</div><div class="k">Within ±2 pts</div></div>
     <div class="acc-stat"><div class="v">{{ n }}</div><div class="k">Predictions</div></div>
   </div>
+
+  {% if interpretation %}<div class="interp">💡 {{ interpretation }}</div>{% endif %}
 
   <div class="ghead">Per gameweek</div>
   <div class="card">
