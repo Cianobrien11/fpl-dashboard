@@ -1576,3 +1576,142 @@ def backtest_all(history_rows, rankings, fixtures):
         "per_gw": per_gw,
     }
     return agg
+
+
+# ==========================================================================
+# PHASE B — horizon & decision layer: xPPG, multi-GW projections, Team Rating,
+# transfer value. Turns the xPts engine into a decision tool.
+# ==========================================================================
+# Configurable weights for the weighted-GW Team Rating "Expected Points" axis.
+TEAM_RATING_GW_WEIGHTS = [0.40, 0.25, 0.175, 0.10, 0.075]
+
+
+def player_horizon(players, rankings, fixtures, gw_from, gw_to):
+    """Per-player projection over a horizon. Returns list of
+    {name, team, position, price, total_xpts, xppg, per_gw, n_gw} sorted by total."""
+    rng = expected_points_range(players, rankings, fixtures, gw_from, gw_to)
+    n_gw = gw_to - gw_from + 1
+    out = []
+    for r in rng:
+        total = r.get("total_xpts", 0)
+        played = len(r.get("per_gw", {})) or n_gw
+        out.append({
+            "name": r.get("name"), "team": r.get("team"),
+            "position": r.get("position"), "price": r.get("price", 0),
+            "selected_by": r.get("selected_by", 0),
+            "total_xpts": total, "xppg": round(total / max(played, 1), 1),
+            "per_gw": r.get("per_gw", {}), "n_gw": n_gw,
+        })
+    return out
+
+
+def _norm100(v, lo, hi):
+    if hi <= lo:
+        return 50.0
+    return max(0.0, min(100.0, (v - lo) / (hi - lo) * 100))
+
+
+def team_rating(squad, players, rankings, fixtures, gw,
+                weights=None, horizon=5):
+    """FPL IQ Team Rating (0-100) across six axes, per the model spec:
+      Rating = 45% ExpectedPoints + 15% Fixtures + 10% Minutes
+             + 10% Value + 10% Structure + 10% Captaincy
+    ExpectedPoints uses a WEIGHTED multi-GW view (nearer GWs weigh more).
+    Returns {overall, axes:{expected_points, fixtures, minutes, value,
+             structure, captaincy}, projected_gw}.
+    """
+    weights = weights or TEAM_RATING_GW_WEIGHTS
+    by_name = {}
+    for pl in players:
+        by_name.setdefault(pl.get("name", "").lower(), pl)
+
+    # match squad members to live player records
+    members = []
+    for m in squad:
+        rec = by_name.get(m.get("name", "").lower())
+        if rec:
+            members.append({**rec, **m})  # squad flags override
+    if not members:
+        return {"ok": False, "error": "No squad players matched live data."}
+
+    # --- Expected Points axis: weighted multi-GW xPts for the starting XI ---
+    gw_scores = []
+    for i in range(horizon):
+        g = gw + i
+        xp = {(r["name"], r["team"]): r["xpts"]
+              for r in expected_points(members, rankings, fixtures, g)}
+        vals = sorted((xp.get((m.get("name"), m.get("team")), 0) for m in members), reverse=True)
+        gw_scores.append(sum(vals[:11]))  # starting XI
+    wsum = sum(weights[:len(gw_scores)]) or 1
+    weighted_xpts = sum(s * w for s, w in zip(gw_scores, weights)) / wsum
+    projected_gw = round(gw_scores[0], 1) if gw_scores else 0.0
+    # a strong XI gameweek is ~55-75 pts; scale to 0-100
+    s_expected = _norm100(weighted_xpts, 35, 75)
+
+    # --- Fixtures axis: squad's average fixture ease over the horizon ---
+    eases = []
+    for m in members:
+        team = m.get("team"); pos = m.get("position", "MID")
+        cat = "gs" if pos in ("MID", "FWD") else "cs"
+        for i in range(horizon):
+            fx = next((f for f in fixtures.get(team, []) if f["gw"] == gw + i), None)
+            if fx and fx["opponent"] in rankings:
+                d = _difficulty(cat, rankings[fx["opponent"]], fx["venue"])
+                eases.append(2 - d)  # 0 hard..2 easy
+    s_fixtures = _norm100(sum(eases) / len(eases), 0.4, 1.6) if eases else 50.0
+
+    # --- Minutes axis: squad minutes security ---
+    secs = [min(1.0, (m.get("avg_min", 0) or 0) / 85.0) for m in members]
+    s_minutes = _norm100(sum(secs) / len(secs), 0.45, 0.95) if secs else 50.0
+
+    # --- Value axis: points-per-million of the squad ---
+    ppm = [float(m.get("ppm", 0) or 0) for m in members if m.get("ppm")]
+    s_value = _norm100(sum(ppm) / len(ppm), 3.0, 8.0) if ppm else 50.0
+
+    # --- Structure axis: do they have a valid, balanced XI? ---
+    pos_counts = {"GK": 0, "DEF": 0, "MID": 0, "FWD": 0}
+    for m in members:
+        pos_counts[m.get("position", "MID")] = pos_counts.get(m.get("position", "MID"), 0) + 1
+    have_formation = (pos_counts["GK"] >= 1 and pos_counts["DEF"] >= 3
+                      and pos_counts["MID"] >= 2 and pos_counts["FWD"] >= 1)
+    premium = sum(1 for m in members if (m.get("price", 0) or 0) >= 9.5)
+    s_structure = (70 if have_formation else 40) + min(30, premium * 10)
+    s_structure = min(100, s_structure)
+
+    # --- Captaincy axis: strength of best captain option this GW ---
+    caps = captaincy_board(members, rankings, fixtures, gw, limit=1)
+    cap_xp = caps[0]["xpts"] if caps else 0
+    s_captaincy = _norm100(cap_xp, 3.0, 8.0)
+
+    axes = {
+        "expected_points": round(s_expected), "fixtures": round(s_fixtures),
+        "minutes": round(s_minutes), "value": round(s_value),
+        "structure": round(s_structure), "captaincy": round(s_captaincy),
+    }
+    overall = round(0.45 * s_expected + 0.15 * s_fixtures + 0.10 * s_minutes
+                    + 0.10 * s_value + 0.10 * s_structure + 0.10 * s_captaincy)
+    return {"ok": True, "overall": overall, "axes": axes,
+            "projected_gw": projected_gw, "horizon": horizon}
+
+
+def transfer_value(squad, players, rankings, fixtures, gw,
+                   out_name, in_name, horizon=5, transfer_cost=0):
+    """Does swapping out_name -> in_name improve MY team's xPts over the horizon?
+    Returns {ok, out, in, out_xpts, in_xpts, gain, net_gain, verdict}."""
+    def _horizon_xpts(name):
+        rng = expected_points_range(players, rankings, fixtures, gw, gw + horizon - 1)
+        for r in rng:
+            if r.get("name", "").lower() == (name or "").lower():
+                return round(r.get("total_xpts", 0), 1)
+        return None
+    out_xp = _horizon_xpts(out_name)
+    in_xp = _horizon_xpts(in_name)
+    if out_xp is None or in_xp is None:
+        return {"ok": False, "error": "Could not match one or both players."}
+    gain = round(in_xp - out_xp, 1)
+    net = round(gain - (transfer_cost or 0), 1)
+    verdict = ("Do it" if net >= 2 else "Marginal" if net >= 0 else "Hold")
+    return {"ok": True, "out": out_name, "in": in_name,
+            "out_xpts": out_xp, "in_xpts": in_xp, "gain": gain,
+            "net_gain": net, "transfer_cost": transfer_cost, "verdict": verdict,
+            "horizon": horizon}

@@ -375,7 +375,21 @@ def m_team():
     gw_sel = request.args.get("gw")
     data = mobile.team_payload(snap, imported=imported, players=players,
                                gw_override=gw_sel)
-    return render_template("m_team.html", tab="team", team_id=team_id, **data)
+    # Phase B: FPL IQ Team Rating (/100) for the current squad.
+    rating = None
+    try:
+        squad_for_rating = snap.get("squad", []) or []
+        if squad_for_rating and players:
+            rk = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+            tr = analytics.team_rating(squad_for_rating, players, rk,
+                                       snap.get("fixtures", {}),
+                                       snap.get("next_gw") or 1)
+            if tr.get("ok"):
+                rating = tr
+    except Exception:
+        rating = None
+    return render_template("m_team.html", tab="team", team_id=team_id,
+                           rating=rating, **data)
 
 
 @app.route("/app/analytics")

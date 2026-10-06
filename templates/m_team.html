@@ -68,6 +68,18 @@
   .an-rec-move{font-size:15px;font-weight:800}
   .an-gain{background:var(--easy-bg);color:var(--easy);font-size:12px;font-weight:900;padding:3px 8px;border-radius:100px;margin-left:4px}
   .an-rec-why{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.45}
+
+  .rating-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px}
+  .rating-top{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .rating-score{font-size:34px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1}
+  .rating-score small{font-size:14px;color:var(--muted);font-weight:700}
+  .rating-bar{flex:1;height:12px;background:var(--bg);border-radius:7px;overflow:hidden}
+  .rating-fill{height:100%;background:linear-gradient(90deg,var(--p2),var(--accent));border-radius:7px}
+  .axis{display:flex;align-items:center;gap:10px;margin:8px 0}
+  .axis-lab{width:92px;font-size:11px;font-weight:700;color:var(--muted)}
+  .axis-track{flex:1;height:7px;background:var(--bg);border-radius:4px;overflow:hidden}
+  .axis-fill{height:100%;background:var(--accent);border-radius:4px}
+  .axis-val{width:26px;text-align:right;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
 </style>
 
 <div class="sec-label">My Team</div>
@@ -110,6 +122,25 @@
   <div class="stat"><div class="v">£{{ bank }}m</div><div class="k">Bank</div></div>
   {% endif %}
 </div>
+
+{% if rating %}
+<div class="sec-label">FPL IQ Team Rating</div>
+<div class="rating-card">
+  <div class="rating-top">
+    <div class="rating-score">{{ rating.overall }}<small>/100</small></div>
+    <div class="rating-bar"><div class="rating-fill" style="width:{{ rating.overall }}%"></div></div>
+  </div>
+  <div class="axes">
+    {% for key,label in [('expected_points','Expected Pts'),('fixtures','Fixtures'),('minutes','Minutes'),('value','Value'),('structure','Structure'),('captaincy','Captaincy')] %}
+    <div class="axis">
+      <div class="axis-lab">{{ label }}</div>
+      <div class="axis-track"><div class="axis-fill" style="width:{{ rating.axes[key] }}%"></div></div>
+      <div class="axis-val">{{ rating.axes[key] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 <form method="get" action="{{ url_for('m_team') }}" style="margin-bottom:12px">
   <label style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px">Gameweek</label>
