@@ -932,20 +932,36 @@ def _x_clean_sheet(cs_prob, pos):
     return cs_prob * _CS_PTS.get(pos, 0)
 
 
-def _x_defcon(player, pos, p60):
+def _x_defcon(player, pos, p60, hist_rows=None):
     """Expected DefCon points: P(hitting threshold) x 2.
-    Threshold 10 (DEF) / 12 (MID,FWD). We approximate P(threshold) from the
-    player's per-90 defcon vs the threshold, scaled by minutes security."""
+    Threshold 10 (DEF) / 12 (MID,FWD).
+
+    When per-GW history is available, use the EMPIRICAL hit rate — how often the
+    player actually reached the threshold in their recent starts — which is far
+    more accurate than a per-90 ratio. Falls back to the per-90 approximation
+    when no history exists yet.
+    """
     if pos not in ("DEF", "MID", "FWD"):
         return 0.0, 0.0
-    dc90 = float(player.get("defcon_pg", 0) or 0)
     threshold = 10 if pos == "DEF" else 12
+
+    # --- Empirical path: real hit frequency from logged GWs (starts only) ---
+    if hist_rows:
+        starts = [r for r in hist_rows if float(r.get("minutes", 0) or 0) >= 60]
+        starts = starts[:10]  # last ~10 starts
+        if len(starts) >= 3:
+            hits = sum(1 for r in starts if float(r.get("defcon", 0) or 0) >= threshold)
+            p_hit = hits / len(starts)
+            p_hit *= p60
+            return p_hit, p_hit * 2.0
+
+    # --- Fallback: per-90 ratio approximation ---
+    dc90 = float(player.get("defcon_pg", 0) or 0)
     if dc90 <= 0:
         return 0.0, 0.0
-    # logistic-ish: ratio of expected actions to threshold
     ratio = dc90 / threshold
     p_hit = max(0.0, min(0.95, (ratio - 0.6) / 0.6)) if ratio > 0.6 else 0.0
-    p_hit *= p60  # only counts if they play enough
+    p_hit *= p60
     return p_hit, p_hit * 2.0
 
 
@@ -964,22 +980,40 @@ def _x_saves(player, opp, venue, pos, p60):
     return exp_saves, exp_saves / 3.0
 
 
-def _x_bonus(player, exp_goals, exp_assists, cs_prob, pos, p60):
-    """Approximate expected bonus from projected involvement + a BPS-form proxy.
-    Not a full BPS model (FPL only gives season BPS); this scales by projected
-    attacking returns, clean-sheet likelihood and the player's season BPS rate."""
+def _x_bonus(player, exp_goals, exp_assists, cs_prob, pos, p60, hist_rows=None):
+    """Expected bonus points.
+
+    When per-GW history is available, build the expectation from the player's
+    ACTUAL bonus distribution — the real xBonus = P(1)*1 + P(2)*2 + P(3)*3 from
+    how often they earned 1/2/3 bonus in recent starts — blended with a
+    forward-looking signal (this fixture's projected involvement / CS). Falls
+    back to the season-BPS proxy when no history exists.
+    """
+    # Forward-looking signal from THIS fixture's projection (always available).
+    invo = exp_goals + exp_assists
+    fwd = min(1.3, invo * 0.8) + (cs_prob * 0.3 if pos in ("GK", "DEF") else 0.0)
+
+    # --- Empirical path: real bonus distribution from logged starts ---
+    if hist_rows:
+        starts = [r for r in hist_rows if float(r.get("minutes", 0) or 0) >= 60][:10]
+        if len(starts) >= 3:
+            n = len(starts)
+            p1 = sum(1 for r in starts if int(r.get("bonus", 0) or 0) == 1) / n
+            p2 = sum(1 for r in starts if int(r.get("bonus", 0) or 0) == 2) / n
+            p3 = sum(1 for r in starts if int(r.get("bonus", 0) or 0) == 3) / n
+            hist_xbonus = p1 * 1 + p2 * 2 + p3 * 3
+            # Blend the player's established bonus habit (60%) with this
+            # fixture's forward-looking lift (40%), scaled by minutes security.
+            xbonus = (0.6 * hist_xbonus + 0.4 * min(2.0, fwd)) * p60
+            return min(xbonus, 2.5)
+
+    # --- Fallback: season-BPS proxy ---
     ninetys = float(player.get("ninetys", 0) or 0)
     bps = float(player.get("bps", 0) or 0)
     bps90 = (bps / ninetys) if ninetys > 0 else 0.0
-    # a high BPS/90 (>22) player regularly earns bonus; map to an expected value
-    base = max(0.0, (bps90 - 14) / 16.0)  # ~0 at 14 bps/90, ~0.5 at 22
-    base = min(0.9, base)
-    # attacking involvement adds bonus likelihood
-    invo = (exp_goals + exp_assists)
-    attack_bonus = min(1.2, invo * 0.8)
-    cs_bonus = cs_prob * 0.3 if pos in ("GK", "DEF") else 0.0
-    xbonus = (base + attack_bonus + cs_bonus) * p60
-    return min(xbonus, 2.2)  # cap sensibly
+    base = min(0.9, max(0.0, (bps90 - 14) / 16.0))
+    xbonus = (base + fwd) * p60
+    return min(xbonus, 2.2)
 
 
 def _x_cards(player, p60):
@@ -1048,9 +1082,9 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         x_cs_pts = _x_clean_sheet(cs_prob, pos) * p60
 
         # DefCon, Saves, Bonus, Cards
-        _, x_defcon_pts = _x_defcon(p, pos, p60)
+        _, x_defcon_pts = _x_defcon(p, pos, p60, hist_rows)
         _, x_saves_pts = _x_saves(p, opp, venue, pos, p60)
-        x_bonus_pts = _x_bonus(p, egoals, eassists, cs_prob, pos, p60)
+        x_bonus_pts = _x_bonus(p, egoals, eassists, cs_prob, pos, p60, hist_rows)
         x_card_pts = _x_cards(p, p60)
 
         model_xpts = (x_app + x_goal_pts + x_assist_pts + x_cs_pts
