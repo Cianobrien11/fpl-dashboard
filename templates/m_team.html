@@ -135,17 +135,19 @@
 <div class="rating-card">
   <div class="rating-top">
     <div class="rating-score">{{ rating.overall }}<small>/100</small></div>
+    <div class="rating-headline" style="font-weight:800;font-size:14px">{{ rating.benchmark.label if rating.benchmark else '' }} · GW{{ rating.gw }}</div>
     <div class="rating-bar"><div class="rating-fill" style="width:{{ rating.overall }}%"></div></div>
   </div>
   {% if rating.benchmark %}
   <div class="rating-bench">
     <span class="bench-label">{{ rating.benchmark.label }}</span>
-    <span class="bench-detail">Projects {{ rating.projected_gw }} pts vs benchmark {{ rating.benchmark.value }} ({{ '+' if rating.benchmark.diff>0 }}{{ rating.benchmark.diff }})</span>
+    <span class="bench-detail">Projects <b>{{ rating.projected_gw }} pts</b> this GW vs benchmark {{ rating.benchmark.value }} ({{ '+' if rating.benchmark.diff>0 }}{{ rating.benchmark.diff }})</span>
   </div>
   {% endif %}
   {% if rating.summary %}<div class="rating-summary">{{ rating.summary }}</div>{% endif %}
+  <div style="font-size:11px;color:var(--muted);margin:6px 0">Bars are scores out of 100, not points.</div>
   <div class="axes">
-    {% for key,label in [('expected_points','Expected Pts'),('fixtures','Fixtures'),('minutes','Minutes'),('value','Value'),('structure','Structure'),('captaincy','Captaincy')] %}
+    {% for key,label in [('expected_points','Scoring (5-GW)'),('fixtures','Fixtures'),('minutes','Minutes'),('value','Value'),('structure','Structure'),('captaincy','Captaincy')] %}
     <div class="axis">
       <div class="axis-lab">{{ label }}{% if key==rating.best %} <span class="axtag best">★</span>{% elif key==rating.worst %} <span class="axtag worst">!</span>{% endif %}</div>
       <div class="axis-track"><div class="axis-fill {{ 'is-best' if key==rating.best else 'is-worst' if key==rating.worst }}" style="width:{{ rating.axes[key] }}%"></div></div>

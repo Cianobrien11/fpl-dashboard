@@ -1615,7 +1615,7 @@ def _norm100(v, lo, hi):
 
 
 def team_rating(squad, players, rankings, fixtures, gw,
-                weights=None, horizon=5):
+                weights=None, horizon=5, central_total=None):
     """FPL IQ Team Rating (0-100) across six axes, per the model spec:
       Rating = 45% ExpectedPoints + 15% Fixtures + 10% Minutes
              + 10% Value + 10% Structure + 10% Captaincy
@@ -1645,6 +1645,10 @@ def team_rating(squad, players, rankings, fixtures, gw,
               for r in expected_points(members, rankings, fixtures, g)}
         vals = sorted((xp.get((m.get("name"), m.get("team")), 0) for m in members), reverse=True)
         gw_scores.append(sum(vals[:11]))  # starting XI
+    # Fix #3: this GW's score MUST equal the central squad projection (actual
+    # XI + captain) so the rating, Home and My Team all quote one number.
+    if central_total is not None and gw_scores:
+        gw_scores[0] = float(central_total)
     wsum = sum(weights[:len(gw_scores)]) or 1
     weighted_xpts = sum(s * w for s, w in zip(gw_scores, weights)) / wsum
     projected_gw = round(gw_scores[0], 1) if gw_scores else 0.0
@@ -1723,7 +1727,9 @@ def team_rating(squad, players, rankings, fixtures, gw,
         bench_label = "Well below an average GW team"
     benchmark = {"value": GW_BENCHMARK, "diff": diff_vs_bench, "label": bench_label}
 
-    return {"ok": True, "overall": overall, "axes": axes,
+    headline = f"{overall}/100 \u2014 {bench_label} (GW{gw})"
+    return {"ok": True, "overall": overall, "axes": axes, "headline": headline,
+            "gw": gw, "weighted_xpts": round(weighted_xpts, 1),
             "projected_gw": projected_gw, "horizon": horizon,
             "summary": summary, "best": best_k, "worst": worst_k,
             "benchmark": benchmark}

@@ -413,9 +413,22 @@ def m_team():
         squad_for_rating = snap.get("squad", []) or []
         if squad_for_rating and players:
             rk = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
-            tr = analytics.team_rating(squad_for_rating, players, rk,
-                                       snap.get("fixtures", {}),
-                                       snap.get("next_gw") or 1)
+            # Fix #3: match squad to live players with the SAME robust matcher
+            # (id -> accent-folded name -> surname+team) so nobody is dropped,
+            # and feed the central projection total in.
+            _idx = mobile._build_player_index(players)
+            matched_sq = []
+            for _m in squad_for_rating:
+                _live = mobile._match_player(_m, _idx)
+                matched_sq.append({**_m, "name": _live.get("name"), "team": _live.get("team"),
+                                   "position": _live.get("position")} if _live else _m)
+            _gw_r = data.get("gw") or snap.get("next_gw") or 1
+            _central = (data.get("projection") or {}).get("total") if isinstance(data.get("projection"), dict) else None
+            if _central is None:
+                _central = mobile.squad_projection(snap, players, squad_for_rating, _gw_r)["total"]
+            tr = analytics.team_rating(matched_sq, players, rk,
+                                       snap.get("fixtures", {}), int(_gw_r),
+                                       central_total=_central)
             if tr.get("ok"):
                 rating = tr
     except Exception:
