@@ -170,7 +170,7 @@
       {% if m.is_captain %}<span class="arm c">C</span>{% elif m.is_vice %}<span class="arm v">V</span>{% endif %}
       <div class="pn">{{ m.name }}</div>
       <div class="pmeta">{{ m.team }}{% if m.own %} · {{ '%.0f'|format(m.own) }}%{% endif %}</div>
-      {% if m.xpts %}<div class="pxp">{{ '%.1f'|format(m.xpts * 2 if m.is_captain else m.xpts) }}<small> proj{{ ' (C)' if m.is_captain }}</small></div>{% endif %}
+      {% if m.xpts is not none %}<div class="pxp">{{ '%.1f'|format(m.xpts * (m.multiplier or 2) if m.is_captain else m.xpts) }}<small> proj{{ ' (C)' if m.is_captain }}</small></div>{% else %}<div class="pxp" title="{{ 'No fixture this GW' if m.xp_reason == 'no_fixture' else 'Not found in live FPL data' }}">–<small> {{ 'blank GW' if m.xp_reason == 'no_fixture' else 'no data' }}</small></div>{% endif %}
       {% if m.fix %}<div class="fixchip fix-{{ m.fix.band }}">{{ m.fix.opp }} ({{ m.fix.venue }})</div>{% endif %}
     </div>
   {% endmacro %}
@@ -188,7 +188,7 @@
     <div class="player">
       <div class="pn">{{ m.name }}</div>
       <div class="pmeta">{{ m.team }}</div>
-      {% if m.xpts %}<div class="pxp">{{ '%.1f'|format(m.xpts) }}</div>{% endif %}
+      {% if m.xpts is not none %}<div class="pxp">{{ '%.1f'|format(m.xpts) }}</div>{% else %}<div class="pxp">–<small> {{ 'blank GW' if m.xp_reason == 'no_fixture' else 'no data' }}</small></div>{% endif %}
     </div>
     {% endfor %}
   </div>

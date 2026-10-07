@@ -125,10 +125,25 @@ def squad_projection(snap, players, squad, gw):
         return None
 
     has_import_flags = any(("is_bench" in m or "multiplier" in m) for m in squad)
+    _pidx = _build_player_index(players)
     out_players = []
     for m in squad:
         r = _xp_for(m)
         xpts = round(r.get("xpts", 0), 1) if r else None
+        # Explain a missing projection instead of silently showing nothing:
+        #   unmatched  -> player not found in live FPL data (name/ID mismatch)
+        #   no_fixture -> found, but the model has no fixture for their club this
+        #                 GW (blank GW or club-name mapping mismatch)
+        if r:
+            reason = None
+        else:
+            live = _match_player(m, _pidx) if players else None
+            if not live:
+                reason = "unmatched"
+            else:
+                tm = live.get("team")
+                has_fx = any(f.get("gw") == gw for f in fixtures.get(tm, []))
+                reason = "no_fixture" if not has_fx else "no_ranking"
         # ID VALIDATION: when matched to a live player, trust the LIVE team &
         # position (the FPL API is the source of truth) so stale stored mappings
         # (e.g. a transferred player's old club) are auto-corrected.
@@ -139,7 +154,7 @@ def squad_projection(snap, players, squad, gw):
             "team": live_team or m.get("team"),
             "position": live_pos or m.get("position"),
             "team_corrected": bool(r and live_team and _norm_name(live_team) != _norm_name(m.get("team"))),
-            "xpts": xpts, "matched": r is not None,
+            "xpts": xpts, "matched": r is not None, "reason": reason,
             "confidence": r.get("confidence") if r else None,
             "is_bench": m.get("is_bench", False),
             "is_captain": m.get("is_captain", False),
@@ -518,15 +533,9 @@ def team_payload(snap: dict, imported: dict | None = None,
     # Use the CENTRAL projection engine so My Team matches Home exactly, with
     # robust (accent-folded) player matching so no squad member is left blank.
     _proj = squad_projection(snap, players, squad, gw)
-    _xp_lookup = {}
-    for pp in _proj["players"]:
-        # key each projected player by normalised name + (surname,team) for lookup
-        _xp_lookup[_norm_name(pp["name"])] = pp
-    def _xp(member):
-        pp = _xp_lookup.get(_norm_name(member.get("name")))
-        if pp and pp.get("xpts") is not None:
-            return pp["xpts"]
-        return 0.0
+    # squad_projection returns players in the same order as `squad`, so pair
+    # them by position — never re-match by name (that's what dropped players).
+    _proj_rows = _proj["players"]
 
     starters, bench = [], []
     projected = 0.0
@@ -535,9 +544,15 @@ def team_payload(snap: dict, imported: dict | None = None,
     odds = snap.get("odds") or {}
     _own_lookup = {(pl.get("name") or "").lower(): pl.get("selected_by")
                    for pl in players} if players else {}
-    for m in squad:
-        xpts = _xp(m)
-        m = {**m, "xpts": round(xpts, 1)}
+    for _i, m in enumerate(squad):
+        _pp = _proj_rows[_i] if _i < len(_proj_rows) else {}
+        _raw = _pp.get("xpts")
+        xpts = _raw or 0.0
+        m = {**m, "xpts": None if _raw is None else round(_raw, 1),
+             "xp_reason": _pp.get("reason"),
+             "team": _pp.get("team") or m.get("team"),
+             "position": _pp.get("position") or m.get("position"),
+             "team_corrected": _pp.get("team_corrected", False)}
         m["market"] = _market_chip_for(m, odds, fixtures, gw)
         m["fix"] = _player_fixture_chip(m.get("team"), fixtures, gw, rankings, m.get("position", "MID"))
         # ownership from live player data if available
@@ -586,9 +601,9 @@ def team_payload(snap: dict, imported: dict | None = None,
         by_pos = {"GK": [], "DEF": [], "MID": [], "FWD": []}
         for mm in starters:
             by_pos.setdefault(mm.get("position", "MID"), []).append(mm)
-        pos_totals = {k: round(sum(x.get("xpts", 0) for x in v), 1)
+        pos_totals = {k: round(sum((x.get("xpts") or 0) for x in v), 1)
                       for k, v in by_pos.items() if v}
-        ranked_all = sorted(starters, key=lambda x: -x.get("xpts", 0))
+        ranked_all = sorted([x for x in starters if x.get("xpts") is not None], key=lambda x: -x["xpts"])
         strongest = ranked_all[0] if ranked_all else None
         weakest = ranked_all[-1] if ranked_all else None
         # strongest LINE (by total)
