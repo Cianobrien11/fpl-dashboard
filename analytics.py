@@ -1116,6 +1116,9 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         sample_conf = max(0.0, min(1.0, ninetys / 6.0))
         w_anchor = 0.30 + 0.45 * sample_conf        # 0.30 .. 0.75
         xpts = round(max(0.0, w_anchor * anchor_xpts + (1 - w_anchor) * model_xpts), 1)
+        # Sanity clamp: a single-GW xPts above ~20 is physically implausible and
+        # signals bad/stale input data. Cap to keep the UI trustworthy.
+        xpts = min(xpts, 20.0)
 
         # Confidence: minutes certainty dominates; sample size + status.
         mins_cert = min(1.0, p_start + 0.05)
@@ -1703,9 +1706,27 @@ def team_rating(squad, players, rankings, fixtures, gw,
                f"({axes[best_k]}). Weakest: {_labels[worst_k]} ({axes[worst_k]}) "
                f"\u2014 the clearest area to improve.")
 
+    # Benchmark framing: compare the squad's projected GW score to a model
+    # benchmark (a balanced average FPL XI ~ this figure). Makes "53/100"
+    # meaningful: "below-average GW team, projects X vs benchmark Y".
+    GW_BENCHMARK = 52.0  # typical balanced XI projected points (tunable)
+    diff_vs_bench = round(projected_gw - GW_BENCHMARK, 1)
+    if projected_gw >= GW_BENCHMARK + 8:
+        bench_label = "Elite — well above an average GW team"
+    elif projected_gw >= GW_BENCHMARK + 2:
+        bench_label = "Above-average GW team"
+    elif projected_gw >= GW_BENCHMARK - 2:
+        bench_label = "About average for this gameweek"
+    elif projected_gw >= GW_BENCHMARK - 8:
+        bench_label = "Below-average GW team"
+    else:
+        bench_label = "Well below an average GW team"
+    benchmark = {"value": GW_BENCHMARK, "diff": diff_vs_bench, "label": bench_label}
+
     return {"ok": True, "overall": overall, "axes": axes,
             "projected_gw": projected_gw, "horizon": horizon,
-            "summary": summary, "best": best_k, "worst": worst_k}
+            "summary": summary, "best": best_k, "worst": worst_k,
+            "benchmark": benchmark}
 
 
 def transfer_value(squad, players, rankings, fixtures, gw,

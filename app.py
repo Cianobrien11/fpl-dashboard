@@ -56,9 +56,16 @@ def inject_settings():
         pro = user_is_pro()
     except Exception:
         pro = True
+    # Data-freshness: expose when the snapshot was last refreshed so every
+    # screen can show an "Updated ..." indicator (predictions go stale fast).
+    try:
+        _snap = models.load_snapshot() or {}
+        updated = _snap.get("scraped_at")
+    except Exception:
+        updated = None
     return {"app_settings": s or {}, "current_user": cu,
             "is_pro": pro, "billing_on": billing.billing_enabled(),
-            "pro_price": billing.pro_price()}
+            "pro_price": billing.pro_price(), "data_updated": updated}
 
 
 # Build the GW-history index once per request and hand it to the analytics
@@ -284,6 +291,16 @@ def _players(snap: dict) -> list:
 def m_home():
     snap = _ensure_data()
     players = _players(snap)
+    # Use the SAME squad My Team uses (the user's saved/imported squad), not the
+    # shared seed squad — otherwise Home and My Team project different teams.
+    uid = _uid()
+    if uid:
+        try:
+            user_squad = models.load_squad(uid)
+            if user_squad:
+                snap = {**snap, "squad": user_squad}
+        except Exception:
+            pass
     data = mobile.home_payload(snap, players)
     return render_template("m_home.html", tab="home", **data)
 

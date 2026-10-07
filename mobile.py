@@ -17,6 +17,155 @@ from typing import Any
 import analytics
 
 
+
+# ===========================================================================
+# CENTRAL PROJECTION ENGINE — one source of truth for squad xPts.
+# Every screen (Home, My Team, Team Rating, transfers) calls squad_projection()
+# so projected totals + per-player xPts are IDENTICAL everywhere. Robust player
+# matching (element id -> exact name -> accent-folded surname) means names like
+# "Sangare"/"Sangaré" and "Joao Pedro"/"João Pedro" always resolve.
+# ===========================================================================
+import unicodedata as _ud
+
+
+def _norm_name(s):
+    """Lowercase + strip accents so 'Sangaré' == 'sangare', 'João' == 'joao'."""
+    if not s:
+        return ""
+    s = _ud.normalize("NFKD", str(s))
+    s = "".join(c for c in s if not _ud.combining(c))
+    return s.strip().lower()
+
+
+def _surname(s):
+    """Last token of a normalised name (handles 'B.Fernandes' -> 'fernandes')."""
+    n = _norm_name(s).replace(".", " ").replace("-", " ")
+    parts = [t for t in n.split() if t]
+    return parts[-1] if parts else ""
+
+
+def _build_player_index(players):
+    """Index live players for robust matching: by element id, exact norm-name,
+    and surname+team (to disambiguate common surnames)."""
+    by_el, by_name, by_surteam, by_sur = {}, {}, {}, {}
+    for pl in players:
+        el = pl.get("id") or pl.get("element")
+        if el is not None:
+            by_el[el] = pl
+        nm = _norm_name(pl.get("name"))
+        if nm:
+            by_name.setdefault(nm, pl)
+        sur = _surname(pl.get("name"))
+        tm = _norm_name(pl.get("team"))
+        if sur:
+            by_surteam.setdefault((sur, tm), pl)
+            by_sur.setdefault(sur, pl)  # last-resort, first match wins
+    return by_el, by_name, by_surteam, by_sur
+
+
+def _match_player(member, idx):
+    """Resolve a squad member to a live player record. Returns (player|None)."""
+    by_el, by_name, by_surteam, by_sur = idx
+    el = member.get("element") or member.get("id")
+    if el is not None and el in by_el:
+        return by_el[el]
+    nm = _norm_name(member.get("name"))
+    if nm in by_name:
+        return by_name[nm]
+    sur, tm = _surname(member.get("name")), _norm_name(member.get("team"))
+    if (sur, tm) in by_surteam:
+        return by_surteam[(sur, tm)]
+    if sur in by_sur:
+        return by_sur[sur]
+    return None
+
+
+def squad_projection(snap, players, squad, gw):
+    """THE central squad projection. Returns:
+      {total, starting_total, players:[{name, team, position, xpts, matched,
+       is_bench, is_captain, is_vice, multiplier, confidence}], gw}
+    `total` = starting XI xPts with captain multiplier applied (if import flags
+    present), else top-11 by xPts. Every screen uses this so numbers match.
+    """
+    players = players or []
+    fixtures = snap.get("fixtures", {})
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    gw = int(gw or snap.get("next_gw") or snap.get("current_gw") or 1)
+
+    # Run the ONE xPts model over all players for this GW -> lookup by (name,team)/id
+    xp_rows = []
+    try:
+        xp_rows = analytics.expected_points(players, rankings, fixtures, gw)
+    except Exception:
+        xp_rows = []
+    xp_by_el, xp_by_name, xp_by_surteam, xp_by_sur = {}, {}, {}, {}
+    conf_by = {}
+    for r in xp_rows:
+        el = r.get("id")
+        if el is not None:
+            xp_by_el[el] = r
+        nm = _norm_name(r.get("name"))
+        xp_by_name.setdefault(nm, r)
+        sur = _surname(r.get("name")); tm = _norm_name(r.get("team"))
+        xp_by_surteam.setdefault((sur, tm), r)
+        xp_by_sur.setdefault(sur, r)
+
+    def _xp_for(member):
+        el = member.get("element") or member.get("id")
+        if el is not None and el in xp_by_el:
+            return xp_by_el[el]
+        nm = _norm_name(member.get("name"))
+        if nm in xp_by_name:
+            return xp_by_name[nm]
+        sur, tm = _surname(member.get("name")), _norm_name(member.get("team"))
+        if (sur, tm) in xp_by_surteam:
+            return xp_by_surteam[(sur, tm)]
+        if sur in xp_by_sur:
+            return xp_by_sur[sur]
+        return None
+
+    has_import_flags = any(("is_bench" in m or "multiplier" in m) for m in squad)
+    out_players = []
+    for m in squad:
+        r = _xp_for(m)
+        xpts = round(r.get("xpts", 0), 1) if r else None
+        # ID VALIDATION: when matched to a live player, trust the LIVE team &
+        # position (the FPL API is the source of truth) so stale stored mappings
+        # (e.g. a transferred player's old club) are auto-corrected.
+        live_team = r.get("team") if r else None
+        live_pos = r.get("position") if r else None
+        out_players.append({
+            "name": m.get("name"),
+            "team": live_team or m.get("team"),
+            "position": live_pos or m.get("position"),
+            "team_corrected": bool(r and live_team and _norm_name(live_team) != _norm_name(m.get("team"))),
+            "xpts": xpts, "matched": r is not None,
+            "confidence": r.get("confidence") if r else None,
+            "is_bench": m.get("is_bench", False),
+            "is_captain": m.get("is_captain", False),
+            "is_vice": m.get("is_vice", False),
+            "multiplier": m.get("multiplier", 1) or 1,
+            "opp": r.get("opp") if r else None,
+            "venue": r.get("venue") if r else None,
+        })
+
+    # Starting total: respect import flags (bench excluded, captain x mult);
+    # else take the top 11 matched xPts.
+    if has_import_flags:
+        total = 0.0
+        for pp in out_players:
+            if pp["is_bench"] or pp["xpts"] is None:
+                continue
+            total += pp["xpts"] * (pp["multiplier"] or 1)
+    else:
+        xs = sorted((pp["xpts"] for pp in out_players if pp["xpts"] is not None), reverse=True)
+        total = sum(xs[:11])
+
+    return {"gw": gw, "total": round(total, 1),
+            "players": out_players,
+            "matched_n": sum(1 for pp in out_players if pp["matched"]),
+            "squad_n": len(out_players)}
+
 def _ease_band(ease: float) -> str:
     """Map a 0-10 ease score to a colour band for the UI.
     Higher ease = easier fixtures = green."""
@@ -93,7 +242,18 @@ def recommend_transfer(snap, players, gw_from, gw_to):
         gain = round(best.get("total_xpts", 0) - out_total, 1)
         if gain < 2.0:  # not worth a transfer over the window
             continue
+        # --- SANITY VALIDATION (prevents absurd "+39" recommendations) ---
+        # A multi-GW gain above a plausible ceiling almost always means the
+        # out-player's projection is broken (unmatched / injured / 0-min), not a
+        # genuine edge. Skip these so we never surface a nonsense headline.
         n_gw = gw_to - gw_from + 1
+        plausible_ceiling = 4.0 * n_gw  # ~4 pts/GW swing is already huge
+        if gain > plausible_ceiling:
+            continue
+        # Also require the out-player to have a real projection — swapping out a
+        # player projecting near-zero over the window is a data artefact, not advice.
+        if out_total < 1.0 * n_gw * 0.3:  # out-player barely projects at all
+            continue
         return {
             "out": out_member.get("name"), "out_team": out_member.get("team"),
             "in": best.get("name"), "in_team": best.get("team"),
@@ -149,22 +309,16 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
     # the appeal heuristic when there is no live player data (seed only).
     if has_live:
         try:
-            xp_all = analytics.expected_points(players, rankings, fixtures, gw)
-            xp_lookup = {(r.get("name"), r.get("team")): r for r in xp_all}
-            squad_ranked = []
-            for member in squad:
-                hit = xp_lookup.get((member.get("name"), member.get("team")))
-                if not hit:
-                    # match by name only as a fallback
-                    hit = next((r for r in xp_all
-                                if r.get("name", "").lower() == member.get("name", "").lower()), None)
-                if hit:
-                    squad_ranked.append(hit)
-            squad_ranked.sort(key=lambda r: -r.get("xpts", 0))
-            if squad_ranked:
-                out["captain"] = dict(squad_ranked[0])
-                if len(squad_ranked) > 1:
-                    out["vice"] = dict(squad_ranked[1])
+            # Rank the squad by the CENTRAL engine's per-player xPts (robust
+            # matching, confidence included) so captain xPts matches My Team.
+            _cap_proj = squad_projection(snap, players, squad, gw)
+            ranked = [pp for pp in _cap_proj["players"]
+                      if pp.get("xpts") is not None and not pp.get("is_bench")]
+            ranked.sort(key=lambda pp: -(pp.get("xpts") or 0))
+            if ranked:
+                out["captain"] = dict(ranked[0])
+                if len(ranked) > 1:
+                    out["vice"] = dict(ranked[1])
         except Exception:
             pass
     if out["captain"] is None:
@@ -186,12 +340,11 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
             out["top_players"] = xp_sorted[:6]
 
             # Attach real xPts to captain / vice if we recommended them
-            xp_name = {p.get("name", "").lower(): p.get("xpts", 0) for p in xp}
+            # Captain/vice xPts already come from the central squad_projection
+            # (same numbers My Team shows) — do NOT re-look them up by name here.
             if out["captain"]:
-                out["captain"]["xpts"] = round(xp_name.get(out["captain"]["name"].lower(), 0), 1)
                 out["captain"]["market"] = _market_chip_for(out["captain"], odds, fixtures, gw)
             if out["vice"]:
-                out["vice"]["xpts"] = round(xp_name.get(out["vice"]["name"].lower(), 0), 1)
                 out["vice"]["market"] = _market_chip_for(out["vice"], odds, fixtures, gw)
 
             # Best opportunities = top xPts players NOT already owned
@@ -200,18 +353,10 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
                 o["market"] = _market_chip_for(o, odds, fixtures, gw)
             out["opportunities"] = opps[:5]
 
-            # Projected score = sum of xPts for the user's starting XI if we can
-            # match squad names to the xp list; else sum top-11 of their squad.
-            by_name = {p.get("name", "").lower(): p for p in xp}
-            squad_xp = []
-            for member in squad:
-                nm = member.get("name", "").lower()
-                hit = by_name.get(nm)
-                if hit:
-                    squad_xp.append(hit.get("xpts", 0))
-            if squad_xp:
-                squad_xp.sort(reverse=True)
-                out["projected"] = round(sum(squad_xp[:11]), 1)
+            # Projected score via the CENTRAL engine (same calc My Team uses),
+            # so Home and My Team always agree. Robust matching included.
+            _proj = squad_projection(snap, players, squad, gw)
+            out["projected"] = _proj["total"] if _proj["players"] else None
         except Exception:
             pass
 
@@ -370,15 +515,22 @@ def team_payload(snap: dict, imported: dict | None = None,
     except Exception:
         pass
 
+    # Use the CENTRAL projection engine so My Team matches Home exactly, with
+    # robust (accent-folded) player matching so no squad member is left blank.
+    _proj = squad_projection(snap, players, squad, gw)
+    _xp_lookup = {}
+    for pp in _proj["players"]:
+        # key each projected player by normalised name + (surname,team) for lookup
+        _xp_lookup[_norm_name(pp["name"])] = pp
     def _xp(member):
-        el = member.get("element") or member.get("id")
-        if el in xp_by_el:
-            return xp_by_el[el]
-        return xp_by_name.get(member.get("name", "").lower(), 0)
+        pp = _xp_lookup.get(_norm_name(member.get("name")))
+        if pp and pp.get("xpts") is not None:
+            return pp["xpts"]
+        return 0.0
 
     starters, bench = [], []
     projected = 0.0
-    have_proj = bool(xp_by_el or xp_by_name)
+    have_proj = bool(_proj["players"] and _proj["matched_n"])
 
     odds = snap.get("odds") or {}
     _own_lookup = {(pl.get("name") or "").lower(): pl.get("selected_by")
@@ -425,7 +577,9 @@ def team_payload(snap: dict, imported: dict | None = None,
         except Exception:
             pass
 
-    out["projected"] = round(projected, 1) if have_proj else None
+    # Central total is the single source of truth (captain mult + bench handled
+    # inside squad_projection), guaranteeing parity with Home.
+    out["projected"] = _proj["total"] if have_proj else None
 
     # --- In-page team analysis (shown under the pitch) ---
     if have_proj and starters:

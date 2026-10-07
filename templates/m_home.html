@@ -65,6 +65,7 @@
   .ftchip.m{background:var(--mid-bg);color:var(--mid)}
   .ftchip.h{background:var(--hard-bg);color:var(--hard)}
   .ft-more{display:block;text-align:center;font-size:11px;color:var(--accent);font-weight:700;margin-top:10px;text-decoration:none}
+  .cap-conf{font-size:10px;color:var(--muted);font-weight:700;margin-top:3px}
 </style>
 
 <div class="qline">What should I do this gameweek?</div>
@@ -90,7 +91,8 @@
     <div class="role"><span class="arm c">C</span><span>Captain</span></div>
     <div class="nm">{{ captain.name }}</div>
     <div class="meta">{{ captain.team }} · {{ captain.opponent or captain.opp }} ({{ captain.venue }})</div>
-    <div class="xp">{{ captain.xpts if captain.xpts is defined and captain.xpts else captain.appeal }}<small>{{ 'xPts' if captain.xpts is defined and captain.xpts else 'appeal' }}</small></div>
+    <div class="xp">{{ '%.1f'|format(captain.xpts) if captain.xpts else '—' }}<small>xPts</small></div>
+    {% if captain.confidence %}<div class="cap-conf">{{ captain.confidence }}% confidence</div>{% endif %}
     {% if captain.market %}<div style="font-size:10px;color:#fbbf24;font-weight:800;margin-top:3px">{{ captain.market.label }} {{ captain.market.value }}</div>{% endif %}
   </div>
   {% if vice %}
@@ -98,7 +100,8 @@
     <div class="role"><span class="arm v">V</span><span>Vice</span></div>
     <div class="nm">{{ vice.name }}</div>
     <div class="meta">{{ vice.team }} · {{ vice.opponent or vice.opp }} ({{ vice.venue }})</div>
-    <div class="xp" style="color:var(--text)">{{ vice.xpts if vice.xpts is defined and vice.xpts else vice.appeal }}<small>{{ 'xPts' if vice.xpts is defined and vice.xpts else 'appeal' }}</small></div>
+    <div class="xp" style="color:var(--text)">{{ '%.1f'|format(vice.xpts) if vice.xpts else '—' }}<small>xPts</small></div>
+    {% if vice.confidence %}<div class="cap-conf">{{ vice.confidence }}% confidence</div>{% endif %}
     {% if vice.market %}<div style="font-size:10px;color:#fbbf24;font-weight:800;margin-top:3px">{{ vice.market.label }} {{ vice.market.value }}</div>{% endif %}
   </div>
   {% endif %}

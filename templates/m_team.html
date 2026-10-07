@@ -84,6 +84,9 @@
   .rating-summary{font-size:12.5px;color:var(--text);line-height:1.5;background:var(--surface2);border-radius:10px;padding:11px 13px;margin-bottom:14px}
   .axtag{font-size:10px;font-weight:900}.axtag.best{color:var(--easy)}.axtag.worst{color:var(--mid)}
   .axis-fill.is-best{background:var(--easy)}.axis-fill.is-worst{background:var(--mid)}
+  .rating-bench{margin-bottom:12px}
+  .rating-bench .bench-label{display:block;font-size:13px;font-weight:800;color:var(--accent)}
+  .rating-bench .bench-detail{display:block;font-size:11px;color:var(--muted);margin-top:2px}
 </style>
 
 <div class="sec-label">My Team</div>
@@ -134,6 +137,12 @@
     <div class="rating-score">{{ rating.overall }}<small>/100</small></div>
     <div class="rating-bar"><div class="rating-fill" style="width:{{ rating.overall }}%"></div></div>
   </div>
+  {% if rating.benchmark %}
+  <div class="rating-bench">
+    <span class="bench-label">{{ rating.benchmark.label }}</span>
+    <span class="bench-detail">Projects {{ rating.projected_gw }} pts vs benchmark {{ rating.benchmark.value }} ({{ '+' if rating.benchmark.diff>0 }}{{ rating.benchmark.diff }})</span>
+  </div>
+  {% endif %}
   {% if rating.summary %}<div class="rating-summary">{{ rating.summary }}</div>{% endif %}
   <div class="axes">
     {% for key,label in [('expected_points','Expected Pts'),('fixtures','Fixtures'),('minutes','Minutes'),('value','Value'),('structure','Structure'),('captaincy','Captaincy')] %}
