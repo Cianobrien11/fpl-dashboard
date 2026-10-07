@@ -1118,7 +1118,7 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         xpts = round(max(0.0, w_anchor * anchor_xpts + (1 - w_anchor) * model_xpts), 1)
         # Sanity clamp: a single-GW xPts above ~20 is physically implausible and
         # signals bad/stale input data. Cap to keep the UI trustworthy.
-        xpts = min(xpts, 20.0)
+        xpts = max(0.0, min(xpts, 20.0))
 
         # Confidence: minutes certainty dominates; sample size + status.
         mins_cert = min(1.0, p_start + 0.05)

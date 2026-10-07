@@ -27,6 +27,7 @@ import mailer
 import mobile
 import models
 import scraper
+import validation
 
 app = Flask(__name__)
 # Secret key for signed session cookies. Set SECRET_KEY in Render env for
@@ -280,7 +281,21 @@ def planner():
 # Player-data pages (all fed by the FPL API player list)
 # --------------------------------------------------------------------------
 def _players(snap: dict) -> list:
-    return snap.get("players", []) or []
+    """Single choke point: every page gets VALIDATED player records (Fix #5)."""
+    raw = snap.get("players", []) or []
+    key = (id(raw), len(raw))
+    if snap.get("_valid_key") != key:
+        clean, _ = validation.validate_players(raw, validation.known_teams(snap))
+        snap["_valid_players"], snap["_valid_key"] = clean, key
+    return snap["_valid_players"]
+
+
+@app.route("/app/data-health")
+def m_data_health():
+    """Show what the validation pipeline fixed / dropped."""
+    snap = _ensure_data()
+    _players(snap)
+    return jsonify(validation.LAST_REPORT)
 
 
 # ---------------------------------------------------------------------------
