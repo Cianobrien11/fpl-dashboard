@@ -242,42 +242,60 @@ def recommend_transfer(snap, players, gw_from, gw_to):
     outs.sort(key=lambda t: t[0])  # worst first
     squad_names = {m.get("name", "").lower() for m in squad}
 
-    # Try the worst 3 outs; for each, find the best same-position upgrade.
-    for out_total, out_member, out_rng in outs[:3]:
+    # Try the worst 5 outs; for each, find the best same-position upgrade that
+    # passes VALIDATION. Rules (Fix #4):
+    #   * both players must be projected for EVERY GW in the window (a partial
+    #     total -- missed matches / blank / unmatched -- inflates the gain)
+    #   * per-GW xPts must be plausible (0..15 per GW, avg <= 10)
+    #   * gain > 25  -> rejected, try the next candidate (data artefact)
+    #   * gain > 15  -> allowed but flagged "check" so the UI warns
+    n_gw = gw_to - gw_from + 1
+    GAIN_FLAG, GAIN_REJECT = 15.0, 25.0
+
+    def _valid_proj(r):
+        per = r.get("per_gw") or {}
+        if len(per) < n_gw:
+            return False
+        vals = list(per.values())
+        if any((v is None) or v < 0 or v > 15 for v in vals):
+            return False
+        return (sum(vals) / n_gw) <= 10.0
+
+    for out_total, out_member, out_rng in outs[:5]:
+        if not _valid_proj(out_rng):
+            continue
+        if out_total < 0.3 * n_gw:  # out-player barely projects -> artefact
+            continue
         pos = out_member.get("position")
         budget = (out_member.get("price") or 99) + 2.0  # allow +£2m flexibility
         candidates = [r for r in rng
                       if r.get("position") == pos
                       and r.get("name", "").lower() not in squad_names
-                      and (r.get("price", 99) or 99) <= budget]
+                      and 0 < (r.get("price") or 0) <= budget
+                      and _valid_proj(r)]
         candidates.sort(key=lambda r: -r.get("total_xpts", 0))
-        if not candidates:
-            continue
-        best = candidates[0]
-        gain = round(best.get("total_xpts", 0) - out_total, 1)
-        if gain < 2.0:  # not worth a transfer over the window
-            continue
-        # --- SANITY VALIDATION (prevents absurd "+39" recommendations) ---
-        # A multi-GW gain above a plausible ceiling almost always means the
-        # out-player's projection is broken (unmatched / injured / 0-min), not a
-        # genuine edge. Skip these so we never surface a nonsense headline.
-        n_gw = gw_to - gw_from + 1
-        plausible_ceiling = 4.0 * n_gw  # ~4 pts/GW swing is already huge
-        if gain > plausible_ceiling:
-            continue
-        # Also require the out-player to have a real projection — swapping out a
-        # player projecting near-zero over the window is a data artefact, not advice.
-        if out_total < 1.0 * n_gw * 0.3:  # out-player barely projects at all
-            continue
-        return {
-            "out": out_member.get("name"), "out_team": out_member.get("team"),
-            "in": best.get("name"), "in_team": best.get("team"),
-            "position": pos, "gain": gain,
-            "out_total": round(out_total, 1), "in_total": round(best.get("total_xpts", 0), 1),
-            "reason": (f"Over the next {n_gw} GWs, {best.get('name')} projects "
-                       f"{best.get('total_xpts')} pts vs {out_member.get('name')}'s "
-                       f"{round(out_total,1)} — a {gain}-pt upgrade."),
-        }
+        for best in candidates:
+            gain = round(best.get("total_xpts", 0) - out_total, 1)
+            if gain > GAIN_REJECT:
+                continue  # implausible -> recalculate with next-best candidate
+            if gain < 2.0:
+                break  # sorted desc: nothing better left for this out-player
+            flagged = gain > GAIN_FLAG
+            return {
+                "out": out_member.get("name"), "out_team": out_member.get("team"),
+                "in": best.get("name"), "in_team": best.get("team"),
+                "position": pos, "gain": gain, "flagged": flagged,
+                "out_total": round(out_total, 1), "in_total": round(best.get("total_xpts", 0), 1),
+                "out_avg": round(out_total / n_gw, 1),
+                "in_avg": round(best.get("total_xpts", 0) / n_gw, 1),
+                "n_gw": n_gw,
+                "reason": (f"Over the next {n_gw} GWs, {best.get('name')} projects "
+                           f"{round(best.get('total_xpts', 0), 1)} pts "
+                           f"({round(best.get('total_xpts', 0) / n_gw, 1)}/GW) vs "
+                           f"{out_member.get('name')}'s {round(out_total, 1)} "
+                           f"({round(out_total / n_gw, 1)}/GW) — +{gain} pts."
+                           + (" ⚠ Unusually large gain — double-check injuries/minutes." if flagged else "")),
+            }
     return None
 
 
@@ -386,6 +404,7 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
                 out["transfer"] = {"move": {"out": rec["out"], "in": rec["in"],
                                             "reason": rec["reason"]}}
                 out["transfer_gain"] = rec["gain"]
+                out["transfer_flagged"] = rec.get("flagged", False)
         except Exception:
             pass
 
