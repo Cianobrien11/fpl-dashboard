@@ -80,6 +80,55 @@ def _match_player(member, idx):
     return None
 
 
+def resolve_squad(squad, players):
+    """Fix #15: refresh every squad member's identity from LIVE FPL data.
+
+    Order of trust: FPL element id -> exact accent-folded name -> surname+club
+    -> surname ONLY if that surname is unique in the live data (avoids e.g.
+    two "Konsa"s / "Gomes"s mapping to the wrong club). Matched members get
+    live team / position / price / element; a "team_fixed" note records any
+    club change so the UI and /app/data-health can show it.
+    Returns (resolved_squad, report).
+    """
+    if not players or not squad:
+        return list(squad or []), {"checked": len(squad or []), "fixed": [], "unmatched": []}
+    by_el, by_name, by_surteam, by_sur = _build_player_index(players)
+    sur_count = {}
+    for pl in players:
+        k = _surname(pl.get("name"))
+        sur_count[k] = sur_count.get(k, 0) + 1
+    out, fixed, unmatched = [], [], []
+    for m in squad:
+        el = m.get("element") or m.get("id")
+        live, how = None, None
+        if el is not None and el in by_el:
+            live, how = by_el[el], "id"
+        else:
+            nm = _norm_name(m.get("name"))
+            sur, tm = _surname(m.get("name")), _norm_name(m.get("team"))
+            if nm in by_name:
+                live, how = by_name[nm], "name"
+            elif (sur, tm) in by_surteam:
+                live, how = by_surteam[(sur, tm)], "surname+team"
+            elif sur in by_sur and sur_count.get(sur) == 1:
+                live, how = by_sur[sur], "surname"
+        if not live:
+            unmatched.append(m.get("name"))
+            out.append({**m, "id_match": None})
+            continue
+        q = dict(m)
+        old_team = m.get("team")
+        q.update({"element": live.get("id") or el, "team": live.get("team"),
+                  "position": live.get("position") or m.get("position"),
+                  "price": live.get("price") or m.get("price"),
+                  "id_match": how})
+        if old_team and _norm_name(old_team) != _norm_name(live.get("team")):
+            q["team_fixed"] = old_team
+            fixed.append(f"{m.get('name')}: {old_team} -> {live.get('team')} (by {how})")
+        out.append(q)
+    return out, {"checked": len(squad), "fixed": fixed, "unmatched": unmatched}
+
+
 def squad_projection(snap, players, squad, gw):
     """THE central squad projection. Returns:
       {total, starting_total, players:[{name, team, position, xpts, matched,

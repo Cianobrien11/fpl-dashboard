@@ -212,7 +212,7 @@ def my_team():
         models.save_squad(rows)  # allow saving an empty/partial squad
         return redirect(url_for("my_team"))
 
-    squad = models.load_squad()
+    squad = _live_squad(models.load_squad(), players)
     gw = int(request.args.get("gw", snap.get("next_gw") or GW_FROM_DEFAULT))
     rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
     caps = analytics.captain_picks(rankings, snap["fixtures"], squad, gw)
@@ -258,8 +258,8 @@ def planner():
     snap = _ensure_data()
     gw_from = int(request.args.get("from", snap.get("next_gw") or GW_FROM_DEFAULT))
     gw_to = int(request.args.get("to", gw_from + 7))
-    squad = models.load_squad()
     players = _players(snap)
+    squad = _live_squad(models.load_squad(), players)
     rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
     # player-level targets per GW + an overall next-N-GW view
     next_gw = snap.get("next_gw") or GW_FROM_DEFAULT
@@ -290,12 +290,25 @@ def _players(snap: dict) -> list:
     return snap["_valid_players"]
 
 
+_SQUAD_REPORT: dict = {}
+
+
+def _live_squad(squad, players):
+    """Every screen's squad goes through the FPL-ID resolver (Fix #15)."""
+    try:
+        res, rep = mobile.resolve_squad(squad, players)
+        _SQUAD_REPORT.clear(); _SQUAD_REPORT.update(rep)
+        return res
+    except Exception:
+        return squad
+
+
 @app.route("/app/data-health")
 def m_data_health():
     """Show what the validation pipeline fixed / dropped."""
     snap = _ensure_data()
     _players(snap)
-    return jsonify(validation.LAST_REPORT)
+    return jsonify({"players": validation.LAST_REPORT, "squad_ids": _SQUAD_REPORT})
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +329,7 @@ def m_home():
                 snap = {**snap, "squad": user_squad}
         except Exception:
             pass
+    snap = {**snap, "squad": _live_squad(snap.get("squad", []) or [], players)}
     data = mobile.home_payload(snap, players)
     return render_template("m_home.html", tab="home", **data)
 
@@ -404,6 +418,9 @@ def m_team():
                 snap = {**snap, "squad": user_squad}
         except Exception:
             pass
+    snap = {**snap, "squad": _live_squad(snap.get("squad", []) or [], players)}
+    if imported and imported.get("ok"):
+        imported = {**imported, "squad": _live_squad(imported.get("squad", []), players)}
     gw_sel = request.args.get("gw")
     data = mobile.team_payload(snap, imported=imported, players=players,
                                gw_override=gw_sel)
