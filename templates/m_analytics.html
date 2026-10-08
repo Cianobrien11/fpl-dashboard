@@ -25,6 +25,24 @@
 
 <div class="sec-label">Analytics</div>
 
+<div class="sec-label">⚡ What matters this GW{{ ' ' ~ gw if gw }}</div>
+{% if matters %}
+<div class="preview" style="padding:4px 12px">
+  {% for m in matters %}
+  <a href="{{ url_for('m_analytics_sub', section=m.link) }}" style="display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:{{ '1px solid var(--border)' if not loop.last else 'none' }};color:inherit;text-decoration:none">
+    <div style="width:22px;font-weight:900;color:var(--accent);font-size:15px;text-align:center">{{ loop.index }}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13.5px;font-weight:800">{{ m.title }}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.4">{{ m.detail }}</div>
+    </div>
+    <div style="color:var(--muted)">›</div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty" style="margin-bottom:12px">Top insights appear once live player data is loaded.</div>
+{% endif %}
+
 <a href="{{ url_for('m_ask') }}" style="display:block;text-decoration:none;background:linear-gradient(135deg,var(--p1),var(--p2));border-radius:16px;padding:16px;margin-bottom:14px">
   <div style="display:flex;align-items:center;gap:12px">
     <div style="font-size:26px">🧠</div>
@@ -62,7 +80,7 @@
 </div>
 {% endif %}
 
-<div class="sec-label">Explore</div>
+<div class="sec-label">Explore all</div>
 <div class="grid">
   <a class="acard" href="{{ url_for('m_matches') }}">
     <div class="ic">⚽</div>

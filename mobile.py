@@ -1090,6 +1090,48 @@ def planner_payload(snap, players=None, gw_from=None, gw_to=None,
     }
 
 
+def _what_matters(players, rankings, fixtures, gw, captaincy, diffs):
+    """Fix #11: the 5 insights that matter most THIS gameweek, each one line
+    with a link to the full section. Order = decision priority."""
+    out = []
+    if captaincy:
+        c = captaincy[0]
+        nxt = captaincy[1] if len(captaincy) > 1 else None
+        out.append({"icon": "C", "title": f"Captain: {c['name']}",
+                    "detail": f"{c['xpts']:.1f} xPts vs {c.get('opp')} ({c.get('venue')})"
+                              + (f" — {c['xpts'] - nxt['xpts']:.1f} clear of {nxt['name']}" if nxt else ""),
+                    "link": "captainconf"})
+    sw = _fixture_swings(rankings, fixtures, gw, window=5)
+    if sw.get("easiest"):
+        e = sw["easiest"][0]; h = sw["hardest"][0] if sw.get("hardest") else None
+        out.append({"icon": "FS", "title": f"Fixtures: target {e['team']}",
+                    "detail": f"Easiest next-5 run ({e['overall']}/10)"
+                              + (f"; avoid {h['team']} ({h['overall']}/10)" if h else ""),
+                    "link": "swings"})
+    flagged = [p for p in players if p.get("status") in ("i", "s", "d", "u")
+               and (p.get("selected_by") or 0) >= 5]
+    if flagged:
+        flagged.sort(key=lambda p: -(p.get("selected_by") or 0))
+        f = flagged[0]
+        out.append({"icon": "!", "title": f"Injury/news: {f['name']}",
+                    "detail": (f.get("news") or "Flagged")[:70] + f" — {f.get('selected_by'):.0f}% own"
+                              + (f" (+{len(flagged)-1} more popular players flagged)" if len(flagged) > 1 else ""),
+                    "link": "form"})
+    movers = sorted(players, key=lambda p: -((p.get("transfers_in_event") or 0) - (p.get("transfers_out_event") or 0)))
+    if movers and (movers[0].get("transfers_in_event") or 0) > 0:
+        m = movers[0]
+        net = (m.get("transfers_in_event") or 0) - (m.get("transfers_out_event") or 0)
+        out.append({"icon": "M", "title": f"Market: {m['name']} most bought",
+                    "detail": f"{net:+,} net transfers this GW — price rise likely" if net > 50000 else f"{net:+,} net transfers this GW",
+                    "link": "movers"})
+    if diffs:
+        dd = diffs[0]
+        out.append({"icon": "D", "title": f"Differential: {dd['name']}",
+                    "detail": f"{dd['xpts']:.1f} xPts at only {dd.get('selected_by', 0):.1f}% owned",
+                    "link": "differentials"})
+    return out[:5]
+
+
 def analytics_payload(snap, players=None):
     """Landing hub for the Analytics tab — small previews + links."""
     players = players or snap.get("players", []) or []
@@ -1109,8 +1151,14 @@ def analytics_payload(snap, players=None):
         except Exception:
             pass
 
+    matters = []
+    if has_live:
+        try:
+            matters = _what_matters(players, rankings, fixtures, gw, captaincy, diffs)
+        except Exception:
+            matters = []
     return {
-        "has_live": has_live, "gw": gw,
+        "has_live": has_live, "gw": gw, "matters": matters,
         "captaincy": captaincy, "differentials": diffs,
         "sections": [
             {"key": "captainconf", "title": "Captain Confidence", "desc": "Top armband picks: model xPts vs market goal odds.", "icon": "C"},
