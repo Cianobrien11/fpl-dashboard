@@ -541,7 +541,9 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
                 out["vice"]["market"] = _market_chip_for(out["vice"], odds, fixtures, gw)
 
             # Best opportunities = top xPts players NOT already owned
-            opps = [p for p in xp_sorted if p.get("id") not in _owned_ids]
+            # Fix #4: only suggest players who actually play (>=40% confidence)
+            opps = [p for p in xp_sorted if p.get("id") not in _owned_ids
+                    and (p.get("confidence") or 0) >= 40]
             _by_id = {pl.get("id"): pl for pl in players}
             for o in opps[:5]:
                 o["market"] = _market_chip_for(o, odds, fixtures, gw)

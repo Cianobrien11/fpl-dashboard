@@ -1137,7 +1137,9 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         att_mult = _attack_multiplier(opp, venue, league_xga)
         cs_mult_a = _cs_multiplier(opp, venue, league_xg)
         fix_adj = att_mult if pos in ("MID", "FWD") else cs_mult_a
-        anchor_xpts = base_return * (1.0 + 0.4 * (fix_adj - 1.0)) * max(0.4, p60)
+        # Fix #4: scale fully by P(60+) -- the old 0.4 floor let a 3-minute
+        # sub keep 40% of a starter's projection.
+        anchor_xpts = base_return * (1.0 + 0.4 * (fix_adj - 1.0)) * p60
         # Blend: tiny sample -> trust the opportunity model; real sample ->
         # lean on actual returns (caps a fringe player's ceiling).
         sample_conf = max(0.0, min(1.0, ninetys / 6.0))
@@ -1211,7 +1213,8 @@ def price_predictions(players: list) -> dict:
 def captaincy_board(players: list, rankings: dict, fixtures: dict, gw: int,
                     limit: int = 20) -> list:
     """Best captain picks across ALL players for a gameweek, by xPts."""
-    ranked = expected_points(players, rankings, fixtures, gw)
+    ranked = [r for r in expected_points(players, rankings, fixtures, gw)
+              if (r.get("confidence") or 0) >= 40]   # Fix #4: must actually play
     # captains are almost always MID/FWD — surface those first but keep all
     ranked.sort(key=lambda r: (-(r["xpts"] * (1.1 if r["position"] in ("MID", "FWD") else 1.0))))
     return ranked[:limit]
