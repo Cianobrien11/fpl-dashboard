@@ -478,8 +478,22 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
 
             # Best opportunities = top xPts players NOT already owned
             opps = [p for p in xp_sorted if p.get("name", "").lower() not in squad_names]
+            _by_id = {pl.get("id"): pl for pl in players}
             for o in opps[:5]:
                 o["market"] = _market_chip_for(o, odds, fixtures, gw)
+                # Fix #8: context so the xPts number is explainable at a glance
+                pl = _by_id.get(o.get("id")) or {}
+                n90 = float(pl.get("ninetys") or 0)
+                o["ctx"] = {
+                    "fixture": f"{o.get('opp')} ({o.get('venue')})",
+                    "fix_cls": {0: "easy", 1: "mid", 2: "hard"}.get(o.get("fix_d"), "mid"),
+                    "form": pl.get("form", o.get("form")),
+                    "avg_min": int(pl.get("avg_min") or 0),
+                    "xg90": round((pl.get("xg") or 0) / n90, 2) if n90 >= 1 else None,
+                    "xa90": round((pl.get("xa") or 0) / n90, 2) if n90 >= 1 else None,
+                    "value": round(o.get("xpts", 0) / o["price"], 2) if o.get("price") else None,
+                    "conf": o.get("confidence"),
+                }
             out["opportunities"] = opps[:5]
 
             # Projected score via the CENTRAL engine (same calc My Team uses),

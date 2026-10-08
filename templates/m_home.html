@@ -33,6 +33,9 @@
   table.opps th{text-align:left;color:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;padding:6px 6px;border-bottom:1px solid var(--border)}
   table.opps td{padding:9px 6px;border-bottom:1px solid var(--border)}
   table.opps tr:last-child td{border-bottom:none}
+  table.opps tr:has(+ tr.opp-ctx) td{border-bottom:none;padding-bottom:3px}
+  .ctx-fx{font-weight:800;padding:1px 6px;border-radius:100px}
+  .ctx-easy{background:var(--easy-bg);color:var(--easy)}.ctx-mid{color:var(--mid)}.ctx-hard{color:var(--hard)}
   .opp-nm{font-weight:800}.opp-tm{font-size:10px;color:var(--muted)}
   .opp-pos{font-size:9px;font-weight:800;padding:2px 5px;border-radius:4px;color:#fff;margin-right:5px}
   .op-GK{background:#b45309}.op-DEF{background:#2b6cb0}.op-MID{background:#15803d}.op-FWD{background:#9d174d}
@@ -151,7 +154,7 @@
 
 <!-- Best opportunities -->
 {% if opportunities %}
-<div class="sec-label">📈 Best Opportunities</div>
+<div class="sec-label">📈 Best Opportunities <span style="font-weight:600;text-transform:none;letter-spacing:0;opacity:.7">· top GW projections you don't own</span></div>
 <div class="card" style="padding:4px 12px">
   <table class="opps">
     <tr><th>Player</th><th style="text-align:right">xPts</th><th style="text-align:right">Owned</th></tr>
@@ -161,6 +164,17 @@
       <td class="opp-xp">{{ '%.1f'|format(o.xpts) }}</td>
       <td class="opp-own">{{ '%.1f'|format(o.selected_by|default(0)) }}%</td>
     </tr>
+    {% if o.ctx %}{% set c = o.ctx %}
+    <tr class="opp-ctx"><td colspan="3" style="padding:0 6px 9px;border-bottom:1px solid var(--border);font-size:10.5px;color:var(--muted);line-height:1.6">
+      <span class="ctx-fx ctx-{{ c.fix_cls }}">vs {{ c.fixture }}</span>
+      · Form <b>{{ c.form }}</b>
+      · {{ c.avg_min }}' avg
+      {% if c.xg90 is not none %}· xG {{ c.xg90 }} / xA {{ c.xa90 }} per 90{% endif %}
+      {% if c.value %}· <b>{{ c.value }}</b> xPts/£m{% endif %}
+      · £{{ '%.1f'|format(o.price) }}m
+      {% if c.conf %}· {{ c.conf }}% conf{% endif %}
+    </td></tr>
+    {% endif %}
     {% endfor %}
   </table>
 </div>
