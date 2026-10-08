@@ -48,7 +48,7 @@
       </div>
       <div class="mmeta">
         <span class="mxg">xG {{ '%.2f'|format(m.home_xg) }} – {{ '%.2f'|format(m.away_xg) }}</span>
-        <span class="mverdict">{{ m.verdict }}{% if m.confidence %} · <span class="conf {{ m.confidence }}">{{ m.confidence }}</span>{% endif %}</span>
+        <span class="mverdict">{{ m.verdict }}{% if m.confidence %} · <span class="conf {{ m.confidence }}">{{ m.confidence }}</span>{% endif %}</span>{% if m.p_home is not none %}<span style="font-size:10.5px;color:var(--muted);margin-left:6px">H {{ m.p_home }}% · D {{ m.p_draw }}% · A {{ m.p_away }}%</span>{% endif %}
       </div>
     </div>
     {% endfor %}

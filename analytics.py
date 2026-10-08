@@ -272,10 +272,10 @@ def build_target_tables(rankings: dict, fixtures: dict, gw_from: int,
                 # Context for the tooltip: what makes this fixture easy/hard.
                 # CS/GC judged vs opponent ATTACK; GS judged vs opponent DEFENCE.
                 if cat == "gs":
-                    opp_stat, opp_lbl = round(orr["xga"] / gp, 2), "opp xGA/gm"
+                    opp_stat, opp_lbl = round(_per_game(orr, "xga"), 2), "opp xGA/gm"
                     opp_rank = orr["gc_rk"]
                 else:
-                    opp_stat, opp_lbl = round(orr["xg"] / gp, 2), "opp xG/gm"
+                    opp_stat, opp_lbl = round(_per_game(orr, "xg"), 2), "opp xG/gm"
                     opp_rank = orr["gs_rk"]
                 # 1-5 FDR-style rating (1=easiest, 5=hardest) from the 0/1/2 tier
                 fdr = {0: 2, 1: 3, 2: 5}[d]
@@ -310,6 +310,20 @@ def build_target_tables(rankings: dict, fixtures: dict, gw_from: int,
     return out
 
 
+def _per_game(r: dict, key: str) -> float:
+    """Season total -> per-game using the team's REAL matches played.
+    (Previously hard-coded /3 games, which inflated xG ~2x by GW5-6.)"""
+    mp = r.get("mp") or 0
+    if mp <= 0:
+        mp = 3
+    return float(r.get(key, 0) or 0) / mp
+
+
+def _poisson(k, lam):
+    import math
+    return math.exp(-lam) * lam ** k / math.factorial(k)
+
+
 def predict_gameweek(rankings: dict, fixtures: dict, gw: int) -> list[dict]:
     """xG-model scoreline predictions for all fixtures in a gameweek."""
     seen = set()
@@ -323,25 +337,38 @@ def predict_gameweek(rankings: dict, fixtures: dict, gw: int) -> list[dict]:
                 continue
             seen.add((home, away))
             h, a = rankings[home], rankings[away]
-            gp = 3.0
-            h_att, h_def = h["xg"] / gp, h["xga"] / gp
-            a_att, a_def = a["xg"] / gp, a["xga"] / gp
-            h_xg = (h_att + a_def) / 2 * 1.12
-            a_xg = (a_att + h_def) / 2 * 0.90
-            hs, as_ = round(h_xg), round(a_xg)
+            # Attack x defence relative to league average (per REAL game),
+            # with a modest home edge. Keeps team xG in a realistic 0.5-2.6 band.
+            lg = _league_avg(rankings, "xg") or 1.4
+            h_att, h_def = _per_game(h, "xg"), _per_game(h, "xga")
+            a_att, a_def = _per_game(a, "xg"), _per_game(a, "xga")
+            h_xg = (h_att / lg) * (a_def / lg) * lg * 1.10
+            a_xg = (a_att / lg) * (h_def / lg) * lg * 0.92
+            h_xg = max(0.3, min(3.0, h_xg)); a_xg = max(0.3, min(3.0, a_xg))
+            # Win/draw/loss from independent Poisson goals (0-8).
+            ph = [_poisson(k, h_xg) for k in range(9)]
+            pa = [_poisson(k, a_xg) for k in range(9)]
+            p_home = sum(ph[i] * pa[j] for i in range(9) for j in range(9) if i > j)
+            p_draw = sum(ph[i] * pa[i] for i in range(9))
+            p_away = max(0.0, 1 - p_home - p_draw)
+            probs = {"home": p_home, "draw": p_draw, "away": p_away}
+            best = max(probs, key=probs.get)
+            verdict = {"home": f"{home} win", "away": f"{away} win", "draw": "Draw"}[best]
+            # Most likely scoreline CONSISTENT with the verdict.
+            cands = [(ph[i] * pa[j], i, j) for i in range(6) for j in range(6)
+                     if (best == "home" and i > j) or (best == "away" and j > i)
+                     or (best == "draw" and i == j)]
+            _, hs, as_ = max(cands)
+            top = probs[best]
+            conf = "Clear" if top >= 0.55 else ("Lean" if top >= 0.42 else "Tight")
             diff = h_xg - a_xg
-            if hs > as_:
-                verdict = f"{home} win"
-            elif as_ > hs:
-                verdict = f"{away} win"
-            else:
-                verdict = "Draw"
-            conf = "Clear" if abs(diff) >= 0.7 else ("Lean" if abs(diff) >= 0.3 else "Tight")
             preds.append({
                 "home": home, "away": away,
                 "home_xg": round(h_xg, 2), "away_xg": round(a_xg, 2),
                 "home_score": hs, "away_score": as_,
                 "verdict": verdict, "confidence": conf,
+                "p_home": round(p_home * 100), "p_draw": round(p_draw * 100),
+                "p_away": round(p_away * 100),
             })
     return preds
 
@@ -764,7 +791,7 @@ _CS_PTS = {"GK": 4, "DEF": 4, "MID": 1, "FWD": 0}
 
 # league-average xG / xGA per game (updated from the ranking pool at call time)
 def _league_avg(rankings: dict, key: str) -> float:
-    vals = [r.get(key, 0) / 3.0 for r in rankings.values() if r.get(key)]
+    vals = [_per_game(r, key) for r in rankings.values() if r.get(key)]
     return (sum(vals) / len(vals)) if vals else 1.4
 
 
@@ -777,7 +804,7 @@ def _attack_multiplier(opp: dict, venue: str, league_xga: float) -> float:
     elite one (e.g. Arsenal ~0.33/gm vs ~1.5 avg) cuts sharply toward ~0.4.
     Home/away tilts it +/-8%. Clamped to a sensible 0.35-1.8 band.
     """
-    opp_xga_g = (opp.get("xga", 0) or 0) / 3.0
+    opp_xga_g = _per_game(opp, "xga")
     ratio = opp_xga_g / league_xga if league_xga else 1.0
     mult = ratio * (1.08 if venue == "H" else 0.92)
     return max(0.35, min(1.8, mult))
@@ -786,7 +813,7 @@ def _attack_multiplier(opp: dict, venue: str, league_xga: float) -> float:
 def _cs_multiplier(opp: dict, venue: str, league_xg: float) -> float:
     """Clean-sheet-fixture multiplier: scales by opponent ATTACK strength.
     Facing a weak attack raises CS chance; a strong one lowers it."""
-    opp_xg_g = (opp.get("xg", 0) or 0) / 3.0
+    opp_xg_g = _per_game(opp, "xg")
     ratio = league_xg / opp_xg_g if opp_xg_g else 1.5
     mult = ratio * (1.08 if venue == "H" else 0.92)
     return max(0.35, min(1.8, mult))

@@ -1683,6 +1683,7 @@ def matches_payload(snap, gw=None):
                 "home_score": p["home_score"], "away_score": p["away_score"],
                 "home_xg": p.get("home_xg"), "away_xg": p.get("away_xg"),
                 "verdict": p.get("verdict"), "confidence": p.get("confidence"),
+                "p_home": p.get("p_home"), "p_draw": p.get("p_draw"), "p_away": p.get("p_away"),
             })
     except Exception:
         pass
