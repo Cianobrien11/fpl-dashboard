@@ -200,19 +200,37 @@
 </div>
 {% endif %}
 
-<!-- Next 6 GWs -->
+<!-- Next 6 GWs (Fix #9: tap a bar for detail) -->
 {% if outlook %}
-<div class="sec-label">🔮 Next {{ outlook|length }} Gameweeks</div>
+<div class="sec-label">🔮 Next {{ outlook|length }} Gameweeks <span style="font-weight:600;text-transform:none;letter-spacing:0;opacity:.7">· tap a bar</span></div>
 <div class="card">
   <div class="bars">
     {% for o in outlook %}
-    <div class="bar {{ o.band }}">
-      <div class="col" style="height:{{ (o.ease / 10 * 100)|round(0,'floor') }}%"></div>
+    <button type="button" class="bar {{ o.band }} ol-btn{{ ' sel' if loop.first }}" data-i="{{ loop.index0 }}" style="background:none;border:none;padding:0;cursor:pointer">
+      {% if o.projected is not none %}<div style="font-size:10px;font-weight:800;color:var(--text)">{{ '%.0f'|format(o.projected) }}</div>{% endif %}
+      <div class="col" style="height:{{ [o.ease * 10, 6]|max|round(0,'floor') }}%"></div>
       <div class="gw">{{ o.gw }}</div>
-    </div>
+    </button>
     {% endfor %}
   </div>
+  {% for o in outlook %}
+  <div class="ol-detail" data-i="{{ loop.index0 }}" style="{{ '' if loop.first else 'display:none;' }}margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:12.5px;line-height:1.7">
+    <div style="font-weight:900;font-size:14px;margin-bottom:4px">{{ o.gw }}</div>
+    <div>Fixture rating: <b>{{ o.rating }}/10</b> <span style="color:var(--muted)">({{ o.n_easy }} easy · {{ o.n_tough }} tough{% if o.n_blank %} · {{ o.n_blank }} blank{% endif %})</span></div>
+    {% if o.projected is not none %}<div>Projected XI: <b>{{ o.projected }} xPts</b></div>{% endif %}
+    {% if o.best %}<div>✅ Best fixture: <b>{{ o.best.name }}</b> vs {{ o.best.fx }}</div>{% endif %}
+    {% if o.worst %}<div>⚠️ Worst fixture: <b>{{ o.worst.name }}</b> vs {{ o.worst.fx }}</div>{% endif %}
+  </div>
+  {% endfor %}
 </div>
+<style>.ol-btn .col{transition:opacity .15s}.ol-btn:not(.sel) .col{opacity:.55}.ol-btn.sel .gw{color:var(--text);font-weight:900}</style>
+<script>
+document.querySelectorAll('.ol-btn').forEach(function(b){b.addEventListener('click',function(){
+  var i=b.dataset.i;
+  document.querySelectorAll('.ol-btn').forEach(function(x){x.classList.toggle('sel',x.dataset.i===i)});
+  document.querySelectorAll('.ol-detail').forEach(function(x){x.style.display=x.dataset.i===i?'':'none'});
+});});
+</script>
 {% endif %}
 
 <!-- Matches (free) + Plan my team CTA -->

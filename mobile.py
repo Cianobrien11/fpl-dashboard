@@ -536,27 +536,49 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
     except Exception:
         pass
 
-    # --- Gameweek outlook: next 6 GWs average fixture ease for the squad ---
+    # --- Gameweek outlook (Fix #9): per-GW fixture ease + projected xPts +
+    # best/worst fixture, so each bar is tappable with real detail.
+    # Ticker difficulty d: 0 = easy, 1 = medium, 2 = tough (blank = no fixture).
     try:
-        ticker = analytics.my_team_ticker(squad, rankings, fixtures, gw, gw + 5)
+        gw_to_o = min(gw + 5, 38)
+        ticker = analytics.my_team_ticker(squad, rankings, fixtures, gw, gw_to_o)
         gws = ticker.get("gws", [])
         rows = ticker.get("rows", [])
-        # average difficulty per GW column (lower d = easier). Convert to a 0-10
-        # "ease" bar height where easy fixtures score high.
         if gws and rows:
-            n_cols = len(gws)
-            sums = [0.0] * n_cols
-            counts = [0] * n_cols
-            for r in rows:
-                for i, cell in enumerate(r.get("cells", [])[:n_cols]):
-                    sums[i] += cell.get("d", 0)
-                    counts[i] += 1
+            starters = {m.get("name") for m in squad if not m.get("is_bench")} or {m.get("name") for m in squad}
             outlook = []
-            for i, label in enumerate(gws):
-                avg_d = (sums[i] / counts[i]) if counts[i] else 0
-                # d is 0 (hard) .. 2 (easy) in the ticker; map to 0-10 ease
-                ease = round((avg_d / 2.0) * 10, 1)
-                outlook.append({"gw": label, "ease": ease, "band": _ease_band(ease)})
+            for ci, label in enumerate(gws):
+                g = gw + ci
+                cells = []
+                for r in rows:
+                    if r["name"] not in starters:
+                        continue
+                    c = (r.get("cells") or [])[ci] if ci < len(r.get("cells") or []) else None
+                    if not c or c.get("txt") == "-":
+                        continue
+                    cells.append((c["d"], r["name"], c["txt"]))
+                if cells:
+                    avg_d = sum(c[0] for c in cells) / len(cells)
+                    ease = round((2.0 - avg_d) / 2.0 * 10, 1)   # easy -> tall bar
+                else:
+                    ease = 0.0
+                best = min(cells, key=lambda c: c[0]) if cells else None
+                worst = max(cells, key=lambda c: c[0]) if cells else None
+                proj = None
+                if has_live:
+                    try:
+                        proj = squad_projection(snap, players, squad, g)["total"]
+                    except Exception:
+                        proj = None
+                outlook.append({
+                    "gw": label, "ease": ease, "band": _ease_band(ease),
+                    "rating": ease, "projected": proj,
+                    "n_easy": sum(1 for c in cells if c[0] == 0),
+                    "n_tough": sum(1 for c in cells if c[0] == 2),
+                    "n_blank": len(starters) - len(cells),
+                    "best": {"name": best[1], "fx": best[2]} if best else None,
+                    "worst": {"name": worst[1], "fx": worst[2]} if worst else None,
+                })
             out["outlook"] = outlook
     except Exception:
         pass
