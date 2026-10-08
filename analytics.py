@@ -1121,9 +1121,14 @@ def expected_points(players: list, rankings: dict, fixtures: dict,
         xpts = max(0.0, min(xpts, 20.0))
 
         # Confidence: minutes certainty dominates; sample size + status.
-        mins_cert = min(1.0, p_start + 0.05)
-        sample_cert = min(1.0, ninetys / 5.0)
-        conf = round(100 * (0.6 * mins_cert + 0.4 * sample_cert))
+        # Graded so it can't saturate at 100% for every regular starter:
+        #   minutes certainty = raw P(start) (already capped at 0.97)
+        #   sample certainty  = 90s played, full credit only at 8+ (not 5)
+        #   capped at 95% -- football always has rotation/injury risk.
+        mins_cert = max(0.0, min(1.0, p_start))
+        sample_cert = min(1.0, ninetys / 8.0)
+        conf = round(100 * (0.75 * mins_cert + 0.25 * sample_cert))
+        conf = max(5, min(95, conf))
 
         rel_cat = "gs" if pos in ("MID", "FWD") else "cs"
         d = _difficulty(rel_cat, opp, venue)
