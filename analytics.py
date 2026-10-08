@@ -1338,7 +1338,7 @@ def expected_points_range(players: list, rankings: dict, fixtures: dict,
             key = (r["name"], r["team"])
             a = agg.setdefault(key, {
                 "name": r["name"], "team": r["team"], "position": r["position"],
-                "price": r["price"], "selected_by": r["selected_by"],
+                "price": r["price"], "selected_by": r["selected_by"], "id": r.get("id"),
                 "total_xpts": 0.0, "per_gw": {}, "easy_n": 0,
             })
             a["total_xpts"] += r["xpts"]
@@ -1650,14 +1650,16 @@ def team_rating(squad, players, rankings, fixtures, gw,
              structure, captaincy}, projected_gw}.
     """
     weights = weights or TEAM_RATING_GW_WEIGHTS
-    by_name = {}
+    by_name, by_id = {}, {}
     for pl in players:
         by_name.setdefault(pl.get("name", "").lower(), pl)
+        if pl.get("id") is not None:
+            by_id[pl["id"]] = pl
 
-    # match squad members to live player records
+    # match squad members to live player records -- FPL id first (#2)
     members = []
     for m in squad:
-        rec = by_name.get(m.get("name", "").lower())
+        rec = by_id.get(m.get("element") or m.get("id")) or by_name.get(m.get("name", "").lower())
         if rec:
             members.append({**rec, **m})  # squad flags override
     if not members:

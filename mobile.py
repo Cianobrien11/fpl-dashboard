@@ -80,6 +80,70 @@ def _match_player(member, idx):
     return None
 
 
+# ---------------------------------------------------------------------------
+# Fix #2: ONE standard player object, keyed by FPL id, built from the ONE
+# xPts model. Every screen should read players from here.
+# ---------------------------------------------------------------------------
+_CS_PTS = {"GK": 4, "DEF": 4, "MID": 1, "FWD": 0}
+
+
+def player_object(pl, xr=None):
+    xr = xr or {}
+    comp = xr.get("components") or {}
+    pos = pl.get("position")
+    n90 = float(pl.get("ninetys") or 0)
+    cs_pts = _CS_PTS.get(pos, 0)
+    return {
+        "id": pl.get("id"), "name": pl.get("name"), "team": pl.get("team"),
+        "position": pos, "price": pl.get("price"),
+        "xpts": xr.get("xpts"), "confidence": xr.get("confidence"),
+        "minutes_probability": (round(min(1.0, (comp.get("appearance") or 0) / 2.0), 2)
+                                if xr else None),
+        "xg": round((pl.get("xg") or 0) / n90, 2) if n90 >= 1 else None,   # per 90
+        "xa": round((pl.get("xa") or 0) / n90, 2) if n90 >= 1 else None,   # per 90
+        "cs_prob": (round((comp.get("clean_sheet") or 0) / cs_pts, 2) if xr and cs_pts else None),
+        "bonus": comp.get("bonus"), "defcon": comp.get("defcon"),
+        "components": comp or None,
+        "opp": xr.get("opp"), "venue": xr.get("venue"), "fix_d": xr.get("fix_d"),
+        "form": pl.get("form"), "own": pl.get("selected_by"),
+        "status": pl.get("status"), "news": pl.get("news"),
+    }
+
+
+_POBJ_CACHE = {"key": None, "data": {}}
+
+
+def player_objects(snap, players, gw):
+    """{fpl_id: standard player object} for gameweek `gw` (cached per request data)."""
+    key = (id(players), len(players or []), gw)
+    if _POBJ_CACHE["key"] == key:
+        return _POBJ_CACHE["data"]
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    try:
+        rows = analytics.expected_points(players, rankings, snap.get("fixtures", {}), gw)
+    except Exception:
+        rows = []
+    xr_by = {r.get("id"): r for r in rows if r.get("id") is not None}
+    data = {pl.get("id"): player_object(pl, xr_by.get(pl.get("id")))
+            for pl in players or [] if pl.get("id") is not None}
+    _POBJ_CACHE["key"], _POBJ_CACHE["data"] = key, data
+    return data
+
+
+def squad_ids(squad, players):
+    """FPL ids of the squad (via the robust matcher)."""
+    idx = _build_player_index(players or [])
+    ids = set()
+    for m in squad or []:
+        el = m.get("element") or m.get("id")
+        if el is None:
+            live = _match_player(m, idx)
+            el = live.get("id") if live else None
+        if el is not None:
+            ids.add(el)
+    return ids
+
+
 def captain_explain(pick, others, players=None):
     """Fix #6: explain WHY the model captains this player.
     Returns {scores:{label: 0-10}, confidence, reasons:[...], margin}."""
@@ -301,19 +365,18 @@ def recommend_transfer(snap, players, gw_from, gw_to):
         rng = analytics.expected_points_range(players, rankings, fixtures, gw_from, gw_to)
     except Exception:
         return None
-    by_name = {(r.get("name"), r.get("team")): r for r in rng}
-    by_name_only = {}
-    for r in rng:
-        by_name_only.setdefault(r.get("name", "").lower(), r)
+    # Fix #2: everything keyed by FPL id via the shared robust matcher.
+    rng_by_id = {r.get("id"): r for r in rng if r.get("id") is not None}
+    _idx = _build_player_index(players)
 
-    # Build a player-record lookup for minutes/starts (starter detection).
-    pdata = {}
-    for pl in players:
-        pdata[(pl.get("name"), pl.get("team"))] = pl
-        pdata.setdefault(pl.get("name", "").lower(), pl)
+    def _live(member):
+        el = member.get("element") or member.get("id")
+        if el is not None and el in _idx[0]:
+            return _idx[0][el]
+        return _match_player(member, _idx)
 
     def _is_starter(member):
-        rec = pdata.get((member.get("name"), member.get("team"))) or pdata.get(member.get("name", "").lower())
+        rec = _live(member)
         if not rec:
             return True  # unknown -> don't exclude
         # a starter plays meaningful minutes: >=60 avg or >=2 starts
@@ -326,13 +389,14 @@ def recommend_transfer(snap, players, gw_from, gw_to):
             continue
         if not _is_starter(m):
             continue
-        r = by_name.get((m.get("name"), m.get("team"))) or by_name_only.get(m.get("name", "").lower())
+        _lv = _live(m)
+        r = rng_by_id.get(_lv.get("id")) if _lv else None
         if r:
             outs.append((r.get("total_xpts", 0), m, r))
     if not outs:
         return None
     outs.sort(key=lambda t: t[0])  # worst first
-    squad_names = {m.get("name", "").lower() for m in squad}
+    _owned = squad_ids(squad, players)
 
     # Try the worst 5 outs; for each, find the best same-position upgrade that
     # passes VALIDATION. Rules (Fix #4):
@@ -362,7 +426,7 @@ def recommend_transfer(snap, players, gw_from, gw_to):
         budget = (out_member.get("price") or 99) + 2.0  # allow +£2m flexibility
         candidates = [r for r in rng
                       if r.get("position") == pos
-                      and r.get("name", "").lower() not in squad_names
+                      and r.get("id") not in _owned
                       and 0 < (r.get("price") or 0) <= budget
                       and _valid_proj(r)]
         candidates.sort(key=lambda r: -r.get("total_xpts", 0))
@@ -424,7 +488,7 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
         "fixture_gws": [],     # the GW labels for the ticker columns
     }
 
-    squad_names = {m.get("name", "").lower() for m in squad}
+    _owned_ids = squad_ids(squad, players)
     odds = snap.get("odds") or {}
 
     # --- Captain & vice ---
@@ -477,7 +541,7 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
                 out["vice"]["market"] = _market_chip_for(out["vice"], odds, fixtures, gw)
 
             # Best opportunities = top xPts players NOT already owned
-            opps = [p for p in xp_sorted if p.get("name", "").lower() not in squad_names]
+            opps = [p for p in xp_sorted if p.get("id") not in _owned_ids]
             _by_id = {pl.get("id"): pl for pl in players}
             for o in opps[:5]:
                 o["market"] = _market_chip_for(o, odds, fixtures, gw)
@@ -671,16 +735,6 @@ def team_payload(snap: dict, imported: dict | None = None,
         return out
 
     # Project points for every squad member we can (needs live player xpts).
-    xp_by_el, xp_by_name = {}, {}
-    try:
-        xp = analytics.expected_points(players, rankings, fixtures, gw)
-        for p_ in xp:
-            if p_.get("id") is not None:
-                xp_by_el[p_["id"]] = p_.get("xpts", 0)
-            xp_by_name[p_.get("name", "").lower()] = p_.get("xpts", 0)
-    except Exception:
-        pass
-
     # Use the CENTRAL projection engine so My Team matches Home exactly, with
     # robust (accent-folded) player matching so no squad member is left blank.
     _proj = squad_projection(snap, players, squad, gw)
@@ -693,8 +747,7 @@ def team_payload(snap: dict, imported: dict | None = None,
     have_proj = bool(_proj["players"] and _proj["matched_n"])
 
     odds = snap.get("odds") or {}
-    _own_lookup = {(pl.get("name") or "").lower(): pl.get("selected_by")
-                   for pl in players} if players else {}
+    _pobj = player_objects(snap, players, gw) if players else {}
     # Fix #10: saved squads carry is_bench flags too -- honour them so the
     # pitch shows the real XI + bench (not all 15 on the pitch).
     _has_flags = any(mm.get("is_bench") for mm in squad)
@@ -710,8 +763,10 @@ def team_payload(snap: dict, imported: dict | None = None,
         m["market"] = _market_chip_for(m, odds, fixtures, gw)
         m["fix"] = _player_fixture_chip(m.get("team"), fixtures, gw, rankings, m.get("position", "MID"))
         # ownership from live player data if available
-        own = _own_lookup.get((m.get("name") or "").lower()) if _own_lookup else None
-        m["own"] = own
+        # Fix #2: attach the standard player object (by FPL id)
+        _po = _pobj.get(_pp.get("element") or m.get("element")) if _pobj else None
+        m["own"] = _po.get("own") if _po else None
+        m["obj"] = _po
         is_bench = m.get("is_bench", False)
         if out["imported"] or _has_flags:
             if is_bench:
@@ -982,19 +1037,14 @@ def players_payload(snap, players=None, position="ALL", sort="points",
 
     has_live = len(players) > 0
     odds = (snap.get("odds") or {}) if show_odds else {}
-    xp_by_name = {}
-    if has_live:
-        try:
-            for r in analytics.expected_points(players, rankings, fixtures, gw):
-                xp_by_name[(r.get("name"), r.get("team"))] = r.get("xpts", 0)
-        except Exception:
-            pass
+    _pobj = player_objects(snap, players, gw) if has_live else {}
 
     rows = analytics.filter_sort_players(players, position=position, sort=sort,
                                          search=search, limit=limit)
     out_rows = []
     for pl in rows:
-        xp = xp_by_name.get((pl.get("name"), pl.get("team")), 0)
+        _po = _pobj.get(pl.get("id")) or {}
+        xp = _po.get("xpts") or 0
         fix_s = _fixture_score(pl, rankings, fixtures, gw, odds=odds)
         iq = fpl_iq_score(pl, xp, fix_score=fix_s)
         # Market chip: show the bookmaker signal for this player's next fixture.
@@ -1375,20 +1425,13 @@ def planner_grid(snap, players=None, gw_from=None, gw_to=None):
     # Team projected row: sum squad xPts per GW (needs live players)
     team_row = [None] * n
     if has_live:
-        by_name = {pl.get("name", "").lower(): pl for pl in players}
         for gi, gwlabel in enumerate(gws):
             gwnum = int(gwlabel.replace("GW", ""))
             try:
-                xp = analytics.expected_points(players, rankings, fixtures, gwnum)
-                xp_name = {r.get("name", "").lower(): r.get("xpts", 0) for r in xp}
-                vals = []
-                for m in squad:
-                    v = xp_name.get(m.get("name", "").lower())
-                    if v is not None:
-                        vals.append(v)
-                if vals:
-                    vals.sort(reverse=True)
-                    team_row[gi] = round(sum(vals[:11]), 1)
+                # Fix #2: same central engine as Home / My Team
+                _pj = squad_projection(snap, players, squad, gwnum)
+                if _pj["matched_n"]:
+                    team_row[gi] = _pj["total"]
             except Exception:
                 pass
 
