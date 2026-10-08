@@ -40,6 +40,34 @@ except NameError:
 SEED = os.path.join(BASE, "seed_data.json")
 
 
+def _freshness(iso):
+    """Fix #14: turn the snapshot's UTC ISO stamp into a friendly, London-time
+    label + age + staleness level (fresh <6h, aging <24h, stale >=24h)."""
+    import datetime as _dt
+    if not iso:
+        return {"label": "never", "age": "no data yet", "level": "stale"}
+    try:
+        t = _dt.datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=_dt.timezone.utc)
+        try:
+            from zoneinfo import ZoneInfo
+            local = t.astimezone(ZoneInfo("Europe/London"))
+        except Exception:
+            local = t
+        hrs = (_dt.datetime.now(_dt.timezone.utc) - t).total_seconds() / 3600
+        if hrs < 1:
+            age = f"{max(1, int(hrs * 60))} min ago"
+        elif hrs < 48:
+            age = f"{int(hrs)}h ago"
+        else:
+            age = f"{int(hrs // 24)} days ago"
+        level = "fresh" if hrs < 6 else "aging" if hrs < 24 else "stale"
+        return {"label": local.strftime("%a %d %b, %H:%M"), "age": age, "level": level}
+    except Exception:
+        return {"label": str(iso)[:16], "age": "", "level": "aging"}
+
+
 @app.context_processor
 def inject_settings():
     """Make saved settings AND the logged-in user available to every template
@@ -63,10 +91,12 @@ def inject_settings():
         _snap = models.load_snapshot() or {}
         updated = _snap.get("scraped_at")
     except Exception:
-        updated = None
+        _snap, updated = {}, None
     return {"app_settings": s or {}, "current_user": cu,
             "is_pro": pro, "billing_on": billing.billing_enabled(),
-            "pro_price": billing.pro_price(), "data_updated": updated}
+            "pro_price": billing.pro_price(), "data_updated": updated,
+            "freshness": _freshness(updated),
+            "odds_freshness": _freshness(_snap.get("odds_updated")) if _snap.get("odds_updated") else None}
 
 
 # Build the GW-history index once per request and hand it to the analytics

@@ -79,7 +79,7 @@ a{text-decoration:none;color:inherit}
 <div class="appbar">
   <div class="brandwrap">
     <div class="brand"><span class="dot"></span> FPL IQ</div>
-    {% if data_updated %}<div class="updated">🟢 Updated {{ data_updated }}</div>{% endif %}
+    {% if freshness %}<div class="updated fresh-{{ freshness.level }}" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:100px;display:inline-block;margin:4px 0;{% if freshness.level=='fresh' %}background:#e6f6ec;color:#137a3a{% elif freshness.level=='aging' %}background:#fff4dc;color:#8a5a00{% else %}background:#fde8e8;color:#a32020{% endif %}">{{ '🟢' if freshness.level=='fresh' else '🟡' if freshness.level=='aging' else '🔴' }} Data updated {{ freshness.label }} · {{ freshness.age }}{% if odds_freshness %} · odds {{ odds_freshness.age }}{% endif %}{% if freshness.level=='stale' %} — refresh recommended{% endif %}</div>{% endif %}
   </div>
   {% if gw %}<div class="gw">GW{{ gw }}</div>{% endif %}
   <a class="gear {{ 'active' if tab=='matches' }} {{ 'noGw' if not gw }}" href="{{ url_for('m_matches') }}" aria-label="Matches" style="margin-left:{{ 'auto' if not gw else '10px' }}">
