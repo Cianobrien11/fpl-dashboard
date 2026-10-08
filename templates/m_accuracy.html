@@ -30,6 +30,17 @@
 
 {% if ok %}
   <div class="expl">How FPL IQ's xPts predictions compare to what actually happened, backtested across {{ gws_tested|length }} gameweek(s). Lower MAE/RMSE is better; higher correlation and within-range % are better.</div>
+  {% if headline %}
+  <div class="ghead">Headline scorecard</div>
+  <div class="acc-top">
+    {% set vc = {'good':'#137a3a','ok':'#8a5a00','poor':'#a32020'} %}
+    <div class="acc-stat"><div class="v" style="color:{{ vc[headline.mae_verdict] }}">{{ headline.mae }}</div><div class="k">MAE · pts off per player</div></div>
+    {% if headline.captain_hit_pct is not none %}<div class="acc-stat"><div class="v" style="color:{{ vc[headline.cap_verdict] }}">{{ headline.captain_hit_pct }}%</div><div class="k">Captain hit rate (6+ pts)</div></div>{% endif %}
+    {% if headline.top10_pct is not none %}<div class="acc-stat"><div class="v" style="color:{{ vc[headline.top10_verdict] }}">{{ headline.top10_pct }}%</div><div class="k">Top-10 accuracy</div></div>{% endif %}
+  </div>
+  {% if captain_avg_pts is defined %}<div class="expl">Model captain averaged <b>{{ captain_avg_pts }} pts</b> (before ×2), finished in the real top-10 {{ captain_top10_pct }}% of the time, and left on average {{ captain_avg_regret }} pts vs the best pick in hindsight.</div>{% endif %}
+  {% endif %}
+  <div class="ghead">Detail</div>
   <div class="acc-top">
     <div class="acc-stat"><div class="v">{{ mae }}</div><div class="k">MAE (avg error)</div></div>
     <div class="acc-stat"><div class="v">{{ rmse }}</div><div class="k">RMSE</div></div>
@@ -46,9 +57,9 @@
   <div class="ghead">Per gameweek</div>
   <div class="card">
     <table class="bt">
-      <tr><th>GW</th><th>Preds</th><th>MAE</th><th>±1</th><th>±2</th><th>Corr</th><th>Top10</th></tr>
+      <tr><th>GW</th><th>Preds</th><th>MAE</th><th>±1</th><th>±2</th><th>Corr</th><th>Top10</th><th>Captain</th></tr>
       {% for g in per_gw %}
-      <tr><td>GW{{ g.gw }}</td><td>{{ g.n }}</td><td>{{ g.mae }}</td><td>{{ g.within_1_pct }}%</td><td>{{ g.within_2_pct }}%</td><td>{{ g.correlation }}</td><td>{{ g.top10_hit }}/10</td></tr>
+      <tr><td>GW{{ g.gw }}</td><td>{{ g.n }}</td><td>{{ g.mae }}</td><td>{{ g.within_1_pct }}%</td><td>{{ g.within_2_pct }}%</td><td>{{ g.correlation }}</td><td>{{ g.top10_hit }}/10</td><td>{% if g.captain %}{{ g.captain.name }} {{ g.captain.actual }}{{ ' ✅' if g.captain.hit else ' ❌' }}{% endif %}</td></tr>
       {% endfor %}
     </table>
   </div>

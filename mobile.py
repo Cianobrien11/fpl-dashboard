@@ -80,6 +80,45 @@ def _match_player(member, idx):
     return None
 
 
+def captain_explain(pick, others, players=None):
+    """Fix #6: explain WHY the model captains this player.
+    Returns {scores:{label: 0-10}, confidence, reasons:[...], margin}."""
+    c = pick.get("components") or {}
+    pl = {}
+    for x in players or []:
+        if x.get("id") == pick.get("element"):
+            pl = x; break
+    def s10(v, hi):
+        return round(max(0.0, min(10.0, 10.0 * (v or 0) / hi)), 1)
+    attack = (c.get("goals", 0) or 0) + (c.get("assists", 0) or 0)
+    fix_d = pick.get("fix_d")
+    scores = {
+        "Attack threat": s10(attack, 4.0),
+        "Fixture": {0: 9.0, 1: 6.0, 2: 3.0}.get(fix_d, 5.0),
+        "Form": s10(float(pick.get("form") or pl.get("form") or 0), 10.0),
+        "Minutes": round((pick.get("confidence") or 0) / 10, 1),
+        "Bonus": s10(c.get("bonus", 0), 1.5),
+    }
+    nxt = next((o for o in others if o is not pick and o.get("xpts") is not None), None)
+    margin = round((pick.get("xpts") or 0) - (nxt.get("xpts") or 0), 1) if nxt else None
+    reasons = []
+    if margin is not None:
+        reasons.append(f"Highest projection in your XI — {margin} xPts clear of {nxt.get('name')}.")
+    top = sorted(((k, v) for k, v in c.items() if k != "cards" and v), key=lambda kv: -kv[1])[:2]
+    if top:
+        reasons.append("Points mainly from " + " and ".join(f"{k.replace('_',' ')} ({v:.1f})" for k, v in top) + ".")
+    if pick.get("opp"):
+        ease = {0: "an easy", 1: "a medium", 2: "a tough"}.get(fix_d, "a")
+        reasons.append(f"{ease.capitalize()} fixture: {pick.get('opp')} ({pick.get('venue')}).")
+    conf = pick.get("confidence")
+    if conf is not None:
+        reasons.append(("Nailed starter" if conf >= 80 else "Some rotation risk" if conf >= 60 else "⚠ Real minutes risk")
+                       + f" — {conf}% confidence.")
+    if margin is not None and margin < 0.5:
+        reasons.append("Close call — the vice is almost as good; check team news.")
+    return {"scores": scores, "confidence": conf, "reasons": reasons, "margin": margin}
+
+
 def resolve_squad(squad, players):
     """Fix #15: refresh every squad member's identity from LIVE FPL data.
 
@@ -211,6 +250,10 @@ def squad_projection(snap, players, squad, gw):
             "multiplier": m.get("multiplier", 1) or 1,
             "opp": r.get("opp") if r else None,
             "venue": r.get("venue") if r else None,
+            "components": r.get("components") if r else None,
+            "fix_d": r.get("fix_d") if r else None,
+            "form": r.get("form") if r else None,
+            "element": (r.get("id") if r else None) or m.get("element"),
         })
 
     # Starting total: respect import flags (bench excluded, captain x mult);
@@ -401,6 +444,10 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
                 out["captain"] = dict(ranked[0])
                 if len(ranked) > 1:
                     out["vice"] = dict(ranked[1])
+                try:
+                    out["captain"]["why"] = captain_explain(ranked[0], ranked, players)
+                except Exception:
+                    pass
         except Exception:
             pass
     if out["captain"] is None:
@@ -1467,6 +1514,13 @@ def backtest_payload(snap, history_rows):
     acc = ("very accurate" if mae <= 1.5 else "solid" if mae <= 2.2 else "rough — early-season noise")
     rank = ("ranks players reliably" if corr >= 0.5 else
             "ranks players reasonably" if corr >= 0.3 else "ranking is noisy so far")
+    _ch = res.get("captain_hit_pct"); _t10 = res.get("top10_pct")
+    res["headline"] = {
+        "mae": mae, "captain_hit_pct": _ch, "top10_pct": _t10,
+        "mae_verdict": "good" if mae <= 2.0 else "ok" if mae <= 2.8 else "poor",
+        "cap_verdict": None if _ch is None else ("good" if _ch >= 50 else "ok" if _ch >= 35 else "poor"),
+        "top10_verdict": None if _t10 is None else ("good" if _t10 >= 40 else "ok" if _t10 >= 25 else "poor"),
+    }
     res["interpretation"] = (f"On average predictions land within {mae} pts of the real score "
                              f"({acc}); {w2}% within \u00b12. Correlation {corr} means the model "
                              f"{rank}. Accuracy sharpens as more gameweeks are logged.")

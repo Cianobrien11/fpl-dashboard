@@ -1544,8 +1544,22 @@ def backtest_gameweek(history_rows, rankings, fixtures, target_gw,
     misses = [{"name": names[i], "pred": round(preds[i], 1),
                "actual": round(acts[i], 1), "err": round(errs[i], 1)} for i in idx_sorted]
 
+    # Captaincy (Fix #13): the model's #1 pick vs reality.
+    #   hit      = the pick "returned" (>= 6 actual pts, i.e. 12+ as captain)
+    #   in_top10 = the pick finished in the actual top-10 scorers
+    #   regret   = best actual score in the pool minus the pick's score
+    cap_i = order_pred[0]
+    cap_actual = acts[cap_i]
+    best_actual = max(acts)
+    captain = {"name": names[cap_i], "pred": round(preds[cap_i], 1),
+               "actual": round(cap_actual, 1), "hit": cap_actual >= 6,
+               "in_top10": cap_i in set(order_act),
+               "best_name": names[order_act[0]], "best_actual": round(best_actual, 1),
+               "regret": round(best_actual - cap_actual, 1)}
+    # Baseline: how would "just pick by form" have done? (proves model adds value)
     return {
-        "ok": True, "gw": target_gw, "n": n,
+        "ok": True, "gw": target_gw, "n": n, "captain": captain,
+        "top10_pct": top10 * 10,
         "mae": round(mae, 2), "rmse": round(rmse, 2),
         "within_1_pct": round(within1), "within_2_pct": round(within2),
         "correlation": round(corr, 3), "top10_hit": top10,
@@ -1578,6 +1592,13 @@ def backtest_all(history_rows, rankings, fixtures):
         "correlation": round(sum(m["correlation"] * m["n"] for m in per_gw) / tot_n, 3),
         "per_gw": per_gw,
     }
+    caps = [m["captain"] for m in per_gw if m.get("captain")]
+    if caps:
+        agg["captain_hit_pct"] = round(100 * sum(1 for c in caps if c["hit"]) / len(caps))
+        agg["captain_top10_pct"] = round(100 * sum(1 for c in caps if c["in_top10"]) / len(caps))
+        agg["captain_avg_pts"] = round(sum(c["actual"] for c in caps) / len(caps), 1)
+        agg["captain_avg_regret"] = round(sum(c["regret"] for c in caps) / len(caps), 1)
+    agg["top10_pct"] = round(sum(m.get("top10_hit", 0) for m in per_gw) * 10 / len(per_gw))
     return agg
 
 

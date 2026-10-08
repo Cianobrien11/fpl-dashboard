@@ -107,6 +107,25 @@
   {% endif %}
 </div>
 {% endif %}
+{% if captain %}
+{% if captain.why %}
+<details class="card" style="padding:10px 14px;margin:8px 0 4px">
+  <summary style="font-weight:800;font-size:13px;cursor:pointer">Why captain {{ captain.name }}?</summary>
+  <div style="margin-top:10px">
+    {% for k,v in captain.why.scores.items() %}
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px;margin:5px 0">
+      <span style="width:96px;color:var(--muted);font-weight:700">{{ k }}</span>
+      <div style="flex:1;height:7px;background:var(--surface2);border-radius:4px;overflow:hidden"><div style="height:100%;width:{{ v*10 }}%;background:var(--accent)"></div></div>
+      <span style="width:38px;text-align:right;font-weight:800">{{ v }}/10</span>
+    </div>
+    {% endfor %}
+    <ul style="margin:10px 0 2px 16px;padding:0;font-size:12.5px;line-height:1.55">
+      {% for r in captain.why.reasons %}<li>{{ r }}</li>{% endfor %}
+    </ul>
+  </div>
+</details>
+{% endif %}
+{% endif %}
 
 <!-- Recommended transfer -->
 <div class="sec-label">Recommended Transfer</div>
