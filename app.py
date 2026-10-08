@@ -245,7 +245,19 @@ def my_team():
     squad = _live_squad(models.load_squad(), players)
     gw = int(request.args.get("gw", snap.get("next_gw") or GW_FROM_DEFAULT))
     rankings = analytics.compute_rankings(snap["team_stats"], snap.get("team_strength"))
-    caps = analytics.captain_picks(rankings, snap["fixtures"], squad, gw)
+    # Fix #7: captain picks ranked by the CENTRAL xPts engine (same as the
+    # mobile app) with confidence -- no more opaque "appeal" score.
+    caps = []
+    if players and squad:
+        try:
+            _pj = mobile.squad_projection(snap, players, squad, gw)
+            caps = sorted([{"name": x["name"], "team": x["team"], "position": x["position"],
+                            "opponent": x.get("opp") or "-", "venue": x.get("venue") or "",
+                            "xpts": x["xpts"], "confidence": x.get("confidence")}
+                           for x in _pj["players"] if x.get("xpts") is not None],
+                          key=lambda c: -c["xpts"])
+        except Exception:
+            caps = []
     # transfer hints: squad players whose team has a poor upcoming run
     tables = analytics.build_target_tables(rankings, snap["fixtures"], gw, gw + 4)
     cs_rank = {r["team"]: r["easy_n"] for r in tables["cs"]}

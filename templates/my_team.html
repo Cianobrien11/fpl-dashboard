@@ -83,17 +83,19 @@
 {% if squad %}
 <div class="wrap">
   <h2>Captain Picks for GW{{ gw }}</h2>
-  <p class="hint">From your saved squad, ranked by matchup appeal.</p>
+  <p class="hint">From your saved squad, ranked by projected points (xPts) from the FPL IQ model, with minutes confidence.</p>
   <table>
-    <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Opponent</th><th>Appeal</th></tr></thead>
+    <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Opponent</th><th>xPts</th><th>Confidence</th></tr></thead>
     <tbody>
+    {% if not caps %}<tr><td colspan="7" class="hint">No projections yet — refresh data to load live player stats.</td></tr>{% endif %}
     {% for c in caps %}
       <tr class="{{ 't1' if loop.index0<3 else 't2' if loop.index0<6 else 't3' }}">
         <td class="rk">{{ loop.index }}</td>
         <td class="tn">{% if loop.index0==0 %}&#128081; {% endif %}{{ c.name }}</td>
         <td>{{ c.position }}</td><td>{{ c.team }}</td>
         <td class="mono">{{ c.opponent }} ({{ c.venue }})</td>
-        <td class="mono cnt-hi">{{ '%.2f'|format(c.appeal) }}</td>
+        <td class="mono cnt-hi">{{ '%.1f'|format(c.xpts) }}</td>
+        <td class="mono">{{ c.confidence ~ '%' if c.confidence is not none else '–' }}</td>
       </tr>
     {% endfor %}
     </tbody>
