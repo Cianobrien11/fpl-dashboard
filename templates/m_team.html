@@ -26,7 +26,11 @@
       linear-gradient(0deg,rgba(0,0,0,.12),rgba(0,0,0,.12)),
       repeating-linear-gradient(0deg,#0d3a24 0 44px,#0f4028 44px 88px);
     border:1px solid var(--border);border-radius:16px;padding:16px 6px;margin-bottom:12px}
-  .prow{display:flex;justify-content:center;gap:7px;margin-bottom:14px;flex-wrap:wrap}
+  .pitch{position:relative;overflow:hidden}
+  .pitch-lines{position:absolute;inset:10px;border:2px solid rgba(255,255,255,.16);border-radius:6px;pointer-events:none}
+  .pitch-lines::before{content:"";position:absolute;left:0;right:0;top:50%;border-top:2px solid rgba(255,255,255,.16)}
+  .pitch-lines::after{content:"";position:absolute;left:50%;top:50%;width:70px;height:70px;margin:-35px 0 0 -35px;border:2px solid rgba(255,255,255,.16);border-radius:50%}
+  .prow{position:relative;z-index:1;display:flex;justify-content:center;gap:7px;margin-bottom:14px;flex-wrap:wrap}
   .prow:last-child{margin-bottom:0}
   .player{position:relative;background:rgba(255,255,255,.96);color:#0b1a12;border-radius:9px;
     width:70px;padding:6px 3px 5px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.25)}
@@ -166,7 +170,12 @@
 </form>
 
 <!-- Pitch -->
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin:0 4px 6px">
+  <span class="bench-label" style="margin:0">Starting XI{% if formation %} · {{ formation }}{% endif %}</span>
+  {% if auto_xi %}<span style="font-size:10.5px;color:var(--muted)">Best XI picked by xPts</span>{% endif %}
+</div>
 <div class="pitch">
+  <div class="pitch-lines"></div>
   {% macro pcard(m) %}
     <div class="player">
       {% if m.is_captain %}<span class="arm c">C</span>{% elif m.is_vice %}<span class="arm v">V</span>{% endif %}
@@ -184,13 +193,16 @@
 
 {% if bench %}
 <div class="bench-wrap">
-  <div class="bench-label">Bench</div>
-  <div class="bench">
+  <div class="bench-label">Bench{% if bench_total %} · {{ bench_total }} xPts on the bench{% endif %}</div>
+  <div class="bench" style="background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:12px 6px">
     {% for m in bench %}
     <div class="player">
+      <span class="arm" style="background:#475569;left:-6px;right:auto">{{ 'GK' if m.position == 'GK' else loop.index0 if bench[0].position == 'GK' else loop.index }}</span>
       <div class="pn">{{ m.name }}</div>
-      <div class="pmeta">{{ m.team }}</div>
+      <div class="pmeta">{{ m.position }} · {{ m.team }}</div>
       {% if m.xpts is not none %}<div class="pxp">{{ '%.1f'|format(m.xpts) }}</div>{% else %}<div class="pxp">–<small> {{ 'blank GW' if m.xp_reason == 'no_fixture' else 'no data' }}</small></div>{% endif %}
+    </div>
+      {% if m.fix %}<div class="fixchip fix-{{ m.fix.band }}">{{ m.fix.opp }} ({{ m.fix.venue }})</div>{% endif %}
     </div>
     {% endfor %}
   </div>

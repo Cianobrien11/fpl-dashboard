@@ -695,6 +695,9 @@ def team_payload(snap: dict, imported: dict | None = None,
     odds = snap.get("odds") or {}
     _own_lookup = {(pl.get("name") or "").lower(): pl.get("selected_by")
                    for pl in players} if players else {}
+    # Fix #10: saved squads carry is_bench flags too -- honour them so the
+    # pitch shows the real XI + bench (not all 15 on the pitch).
+    _has_flags = any(mm.get("is_bench") for mm in squad)
     for _i, m in enumerate(squad):
         _pp = _proj_rows[_i] if _i < len(_proj_rows) else {}
         _raw = _pp.get("xpts")
@@ -710,7 +713,7 @@ def team_payload(snap: dict, imported: dict | None = None,
         own = _own_lookup.get((m.get("name") or "").lower()) if _own_lookup else None
         m["own"] = own
         is_bench = m.get("is_bench", False)
-        if out["imported"]:
+        if out["imported"] or _has_flags:
             if is_bench:
                 bench.append(m)
             else:
@@ -730,7 +733,31 @@ def team_payload(snap: dict, imported: dict | None = None,
     for m in starters:
         key = pos_order.get(m.get("position", ""), "mids")
         out[key].append(m)
+    # No flags at all (manual squad of 15): pick a valid XI by xPts
+    # (1 GK, >=3 DEF, >=2 MID, >=1 FWD) and send the rest to the bench.
+    if not (out["imported"] or _has_flags) and len(starters) > 11:
+        _xp = lambda mm: mm.get("xpts") if mm.get("xpts") is not None else -1
+        by = {k: sorted([mm for mm in starters if mm.get("position") == k], key=_xp, reverse=True)
+              for k in ("GK", "DEF", "MID", "FWD")}
+        xi = by["GK"][:1] + by["DEF"][:3] + by["MID"][:2] + by["FWD"][:1]
+        pool = sorted([mm for k in ("DEF", "MID", "FWD") for mm in by[k] if mm not in xi], key=_xp, reverse=True)
+        lim = {"DEF": 5, "MID": 5, "FWD": 3}
+        for mm in pool:
+            if len(xi) >= 11:
+                break
+            if sum(1 for x in xi if x.get("position") == mm.get("position")) < lim[mm.get("position")]:
+                xi.append(mm)
+        bench = [mm for mm in starters if mm not in xi]
+        bench.sort(key=lambda mm: (mm.get("position") != "GK", -_xp(mm)))  # GK first, then by xPts
+        starters = xi
+        for k in ("gk", "defs", "mids", "fwds"):
+            out[k] = []
+        for mm in starters:
+            out[pos_order.get(mm.get("position", ""), "mids")].append(mm)
+        out["auto_xi"] = True
     out["bench"] = bench
+    out["bench_total"] = round(sum((mm.get("xpts") or 0) for mm in bench), 1)
+    out["formation"] = f"{len(out['defs'])}-{len(out['mids'])}-{len(out['fwds'])}"
 
     # Fallback captain pick from analytics if the import had none
     if out["captain"] is None:
