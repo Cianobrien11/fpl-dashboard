@@ -201,7 +201,6 @@
       <div class="pn">{{ m.name }}</div>
       <div class="pmeta">{{ m.position }} · {{ m.team }}</div>
       {% if m.xpts is not none %}<div class="pxp">{{ '%.1f'|format(m.xpts) }}</div>{% else %}<div class="pxp">–<small> {{ 'blank GW' if m.xp_reason == 'no_fixture' else 'no data' }}</small></div>{% endif %}
-    </div>
       {% if m.fix %}<div class="fixchip fix-{{ m.fix.band }}">{{ m.fix.opp }} ({{ m.fix.venue }})</div>{% endif %}
     </div>
     {% endfor %}
