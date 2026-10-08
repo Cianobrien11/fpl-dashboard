@@ -66,10 +66,21 @@
   <a href="{{ url_for('m_ask', q='Who should I captain?') }}">Who should I captain?</a>
   <a href="{{ url_for('m_ask', q='best midfielder under £8m') }}">Best mid under £8m</a>
   <a href="{{ url_for('m_ask', q='best forward') }}">Best forward</a>
+  <a href="{{ url_for('m_ask', q='Should I captain Haaland?') }}">Captain Haaland?</a>
 </div>
 
 {% if result and result.ok %}
   <div class="ans-card">
+    {% if result.decision %}
+    {% set dc = {'YES':'#16a34a','NO':'#dc2626','MARGINAL':'#d97706'}[result.decision] %}
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <div style="font-size:26px;font-weight:900;color:{{ dc }}">{{ result.decision }}</div>
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:800">{{ result.confidence }}% confidence</div>
+        <div style="height:7px;background:var(--surface2);border-radius:4px;overflow:hidden;margin-top:4px"><div style="height:100%;width:{{ result.confidence }}%;background:{{ dc }}"></div></div>
+      </div>
+    </div>
+    {% endif %}
     <div class="ans-head">{{ result.answer }}</div>
     {% if result.detail %}<div class="ans-detail">{{ result.detail }}</div>{% endif %}
 
@@ -99,6 +110,13 @@
         </tr>
         {% endfor %}
       </table>
+    {% endif %}
+
+    {% if result.reasons %}
+      <div style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px">Why</div>
+      <ul style="margin:0 0 4px 16px;padding:0;font-size:12.5px;line-height:1.6">
+        {% for r in result.reasons %}<li>{{ r }}</li>{% endfor %}
+      </ul>
     {% endif %}
 
     {% if result.players %}

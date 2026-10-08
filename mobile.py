@@ -1407,20 +1407,41 @@ import re as _re
 
 def _find_player(name_frag, pool):
     """Best-effort match a name fragment to a player in the xPts pool."""
-    name_frag = (name_frag or "").strip().lower()
+    name_frag = _norm_name(name_frag)
     if not name_frag:
         return None
-    # exact, then startswith, then contains
+    # exact, then startswith, then contains (accent-insensitive)
     for r in pool:
-        if r["name"].lower() == name_frag:
+        if _norm_name(r["name"]) == name_frag:
             return r
     for r in pool:
-        if r["name"].lower().startswith(name_frag):
+        if _norm_name(r["name"]).startswith(name_frag):
             return r
     for r in pool:
-        if name_frag in r["name"].lower():
+        if name_frag in _norm_name(r["name"]):
             return r
     return None
+
+
+def _decision_confidence(gain, n_gw, wins, conf_a, conf_b):
+    """Fix #12: how sure the model is about a transfer call (5-95%).
+    Bigger gain per GW, more GWs won, and nailed minutes on both -> higher."""
+    per_gw = abs(gain) / max(n_gw, 1)
+    size = min(1.0, per_gw / 1.5)                 # 1.5 xPts/GW edge = max
+    consistency = wins / max(n_gw, 1)             # share of GWs the pick wins
+    mins = ((conf_a or 70) + (conf_b or 70)) / 200.0
+    c = 100 * (0.45 * size + 0.30 * consistency + 0.25 * mins)
+    return int(max(5, min(95, round(c))))
+
+
+def _gw1_rows(players, rankings, fixtures, gw):
+    rows = {}
+    try:
+        for r in analytics.expected_points(players, rankings, fixtures, gw):
+            rows[(r.get("name"), r.get("team"))] = r
+    except Exception:
+        pass
+    return rows
 
 
 def ask_fpl_iq(question, snap, players=None, gw_from=None, gw_to=None):
@@ -1467,6 +1488,32 @@ def ask_fpl_iq(question, snap, players=None, gw_from=None, gw_to=None):
                             "diff": round(bv - av, 1)})
             diff_total = round(b["total_xpts"] - a["total_xpts"], 1)
             better = b if diff_total > 0 else a
+            n_gw = gw_to - gw_from + 1
+            g1 = _gw1_rows(players, rankings, fixtures, gw_from)
+            ra = g1.get((a["name"], a["team"])) or {}
+            rb = g1.get((b["name"], b["team"])) or {}
+            wins_b = sum(1 for r_ in per if r_["diff"] > 0)
+            yes = diff_total >= 2.0
+            wins = wins_b if yes else (n_gw - wins_b)
+            confidence = _decision_confidence(diff_total, n_gw, wins, ra.get("confidence"), rb.get("confidence"))
+            reasons = [f"{b['name']} out-projects {a['name']} in {wins_b} of {n_gw} gameweeks."]
+            _bp = {pl.get("name"): pl for pl in players}
+            pa, pb = _bp.get(a["name"], {}), _bp.get(b["name"], {})
+            if pa.get("form") is not None and pb.get("form") is not None:
+                reasons.append(f"Form: {b['name']} {pb.get('form')} vs {a['name']} {pa.get('form')}.")
+            ea, eb = a.get("easy_n", 0), b.get("easy_n", 0)
+            if ea != eb:
+                reasons.append(f"Easy fixtures in window: {b['name']} {eb} vs {a['name']} {ea}.")
+            if rb.get("confidence") is not None and ra.get("confidence") is not None:
+                reasons.append(f"Minutes confidence: {b['name']} {rb['confidence']}% vs {a['name']} {ra['confidence']}%.")
+                if rb["confidence"] < 60:
+                    reasons.append(f"⚠ {b['name']} has real minutes risk — check team news.")
+            pdiff = round((b.get("price") or 0) - (a.get("price") or 0), 1)
+            if pdiff:
+                reasons.append(f"Costs {'+' if pdiff > 0 else ''}£{pdiff}m.")
+            if 0 <= diff_total < 4:
+                reasons.append("Gain is under 4 pts — not worth a −4 hit, free transfer only.")
+            decision = "YES" if yes else ("MARGINAL" if diff_total >= 0 else "NO")
             # Transfer-decision verdict (gain = B - A over the horizon).
             # Hits -4 if it would cost a point hit; here we show the raw gain
             # and a verdict band so it reads as a real decision, not a ranking.
@@ -1483,6 +1530,8 @@ def ask_fpl_iq(question, snap, players=None, gw_from=None, gw_to=None):
                            f"(-4) would need a gain above ~4 to be worth it."),
                 "comparison": {"a": a, "b": b, "per_gw": per, "diff_total": diff_total,
                                "verdict": verdict},
+                "decision": decision, "confidence": confidence, "reasons": reasons,
+                "headline": f"{decision} — {confidence}% confidence",
             })
             return out
         out["note"] = ("I couldn\u2019t match both players. Try full surnames, "
@@ -1492,6 +1541,33 @@ def ask_fpl_iq(question, snap, players=None, gw_from=None, gw_to=None):
     # --- Captain: "who should I captain" ---
     if "captain" in ql or "armband" in ql:
         board = analytics.captaincy_board(players, rankings, fixtures, gw_from, limit=5)
+        _cm = _re.search(r"captain\s+([a-z\u00c0-\u017f .'-]+)", ql)
+        _cand = _cm.group(1).strip().rstrip("?.! ") if _cm else ""
+        if board and _cand and _cand not in ("", "this week", "this gw", "pick"):
+            g1 = _gw1_rows(players, rankings, fixtures, gw_from)
+            pick = _find_player(_cand, list(g1.values()))
+            if pick:
+                top = board[0]
+                gap = round(top["xpts"] - pick["xpts"], 1)
+                yes = gap <= 0.3 or _norm_name(top["name"]) == _norm_name(pick["name"])
+                conf = int(max(5, min(95, round((pick.get("confidence") or 70) * (0.9 if yes else 1) - (0 if yes else gap * 12)))))
+                if not yes:
+                    conf = int(max(5, min(95, 50 + gap * 15)))
+                reasons = [f"{pick['name']} projects {pick['xpts']} xPts vs {pick.get('opp')} ({pick.get('venue')}).",
+                           f"Minutes confidence {pick.get('confidence')}%."]
+                if not yes:
+                    reasons.insert(0, f"{top['name']} projects {top['xpts']} — {gap} more.")
+                comp = pick.get("components") or {}
+                topc = sorted(((k, v) for k, v in comp.items() if k != "cards" and v), key=lambda kv: -kv[1])[:2]
+                if topc:
+                    reasons.append("Points mainly from " + " and ".join(f"{k.replace('_',' ')} ({v:.1f})" for k, v in topc) + ".")
+                out.update({"ok": True, "kind": "captain",
+                            "decision": "YES" if yes else "NO", "confidence": conf,
+                            "headline": f"{'YES' if yes else 'NO'} — {conf}% confidence",
+                            "answer": (f"Yes, captain {pick['name']} in GW{gw_from}." if yes
+                                       else f"No — {top['name']} is the better captain in GW{gw_from}."),
+                            "detail": None, "reasons": reasons, "players": board})
+                return out
         if board:
             top = board[0]
             out.update({
