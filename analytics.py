@@ -843,7 +843,9 @@ def _rate_from_history(rows, stat_key, n_recent):
         total_stat += float(r.get(stat_key, 0) or 0)
         total_mins += mins
         used += 1
-    if total_mins <= 0:
+    # Health fix: a 3-minute cameo with 0.3 xG is "9 xG per 90". Need at least
+    # two full games of minutes before a recent per-90 rate is trusted.
+    if total_mins < 180:
         return None
     return total_stat / (total_mins / 90.0)
 
@@ -857,7 +859,7 @@ def _blended_per90(player, key_season, hist_rows):
     """
     mins = player.get("minutes", 0) or 0
     season_total = float(player.get(key_season, 0) or 0)
-    season90 = (season_total / (mins / 90.0)) if mins >= 60 else None
+    season90 = (season_total / (mins / 90.0)) if mins >= 180 else None
 
     last6 = _rate_from_history(hist_rows, key_season, 6) if hist_rows else None
     last10 = _rate_from_history(hist_rows, key_season, 10) if hist_rows else None
@@ -881,7 +883,7 @@ def _weighted_per90(player, key_season):
     FPL only gives season totals, so we approximate 'recent' via the ratio of
     form to ppg (hot players get a modest uplift). Keeps it grounded."""
     mins = player.get("minutes", 0) or 0
-    if mins < 60:
+    if mins < 180:
         return 0.0
     season_total = float(player.get(key_season, 0) or 0)
     per90 = season_total / (mins / 90.0)
