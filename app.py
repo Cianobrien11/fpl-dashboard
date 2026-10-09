@@ -444,6 +444,10 @@ def m_home():
         except Exception:
             pass
     snap = {**snap, "squad": _live_squad(snap.get("squad", []) or [], players)}
+    try:
+        snap["bank"] = (models.load_settings(uid) or {}).get("bank") if uid else None
+    except Exception:
+        snap["bank"] = None
     data = mobile.home_payload(snap, players)
     return render_template("m_home.html", tab="home", **data)
 

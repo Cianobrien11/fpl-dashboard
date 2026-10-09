@@ -144,6 +144,50 @@ def squad_ids(squad, players):
     return ids
 
 
+_SD_K = {"FWD": 1.9, "MID": 1.8, "DEF": 1.3, "GK": 1.1}
+
+
+def _cap_sd(p):
+    """Rough points spread for one GW: attackers haul, defenders rarely do."""
+    return _SD_K.get(p.get("position"), 1.6) * max(0.5, (p.get("xpts") or 0)) ** 0.5
+
+
+def cap_score(p):
+    """Captain ranking score: mean + a share of upside (90th-pct ceiling)."""
+    return (p.get("xpts") or 0) + 0.6 * _cap_sd(p)
+
+
+def _phi(z):
+    import math
+    return 0.5 * (1 + math.erf(z / 2 ** 0.5))
+
+
+def label_opportunity(o, squad_rows, live_by_id, bank, club_counts):
+    """BUY / WATCH / DIFFERENTIAL / AVOID for THIS user's squad."""
+    pl = live_by_id.get(o.get("id")) or {}
+    pos = o.get("position")
+    same = [r for r in squad_rows if r.get("position") == pos and r.get("xpts") is not None and not r.get("is_bench")]
+    weakest = min(same, key=lambda r: r["xpts"]) if same else None
+    gain = round((o.get("xpts") or 0) - (weakest["xpts"] if weakest else 0), 1)
+    out_price = (live_by_id.get(weakest.get("element")) or {}).get("price") if weakest else None
+    cost = round((o.get("price") or 0) - (out_price or 0), 1) if out_price is not None else None
+    afford = bank is None or cost is None or cost <= (bank or 0) + 1e-9
+    club_ok = club_counts.get(o.get("team"), 0) < 3 or (weakest and weakest.get("team") == o.get("team"))
+    conf = o.get("confidence") or 0
+    if pl.get("status") in ("i", "s", "u") or (pl.get("chance") is not None and pl.get("chance") < 75) or conf < 60:
+        return "AVOID", (pl.get("news") or f"Only {conf}% to play") 
+    if weakest and gain >= 1.0 and afford and club_ok:
+        why = f"+{gain} vs {weakest['name']}" + (f" · {'+' if cost > 0 else ''}£{cost}m" if cost is not None else "")
+        return "BUY", why
+    if (o.get("own") or o.get("selected_by") or 0) < 10:
+        return "DIFFERENTIAL", f"{(o.get('selected_by') or 0):.1f}% owned"
+    if not afford:
+        return "WATCH", f"Need £{cost}m, bank £{bank}m"
+    if not club_ok:
+        return "WATCH", f"Already 3 {o.get('team')} players"
+    return "WATCH", (f"Only +{gain} vs {weakest['name']}" if weakest else "No direct swap")
+
+
 def captain_explain(pick, others, players=None):
     """Fix #6: explain WHY the model captains this player.
     Returns {scores:{label: 0-10}, confidence, reasons:[...], margin}."""
@@ -167,7 +211,10 @@ def captain_explain(pick, others, players=None):
     margin = round((pick.get("xpts") or 0) - (nxt.get("xpts") or 0), 1) if nxt else None
     reasons = []
     if margin is not None:
-        reasons.append(f"Highest projection in your XI — {margin} xPts clear of {nxt.get('name')}.")
+        if margin >= 0:
+            reasons.append(f"Best mix of projection and upside in your XI — {margin} xPts clear of {nxt.get('name')}.")
+        else:
+            reasons.append(f"Projects {abs(margin)} less than {nxt.get('name')} on average, but has the higher haul ceiling — captains are about upside.")
     top = sorted(((k, v) for k, v in c.items() if k != "cards" and v), key=lambda kv: -kv[1])[:2]
     if top:
         reasons.append("Points mainly from " + " and ".join(f"{k.replace('_',' ')} ({v:.1f})" for k, v in top) + ".")
@@ -180,7 +227,34 @@ def captain_explain(pick, others, players=None):
                        + f" — {conf}% confidence.")
     if margin is not None and margin < 0.5:
         reasons.append("Close call — the vice is almost as good; check team news.")
-    return {"scores": scores, "confidence": conf, "reasons": reasons, "margin": margin}
+    # Three DIFFERENT numbers (P1):
+    #  start   = chance he starts / plays 60+ (from the appearance component)
+    #  reliab  = how much data backs the projection (90s played, status)
+    #  pick    = probability he outscores the next-best captain option
+    start = int(round(100 * min(1.0, (c.get("appearance") or 0) / 2.0))) if c else None
+    n90 = float(pl.get("ninetys") or 0)
+    reliab = int(round(100 * min(1.0, n90 / 8.0) * (0.7 if pl.get("status") == "d" else 1.0)))
+    pick_conf = None
+    if nxt:
+        sd = (_cap_sd(pick) ** 2 + _cap_sd(nxt) ** 2) ** 0.5
+        pick_conf = int(round(100 * _phi(((pick.get("xpts") or 0) - (nxt.get("xpts") or 0)) / sd)))
+    ceiling = round((pick.get("xpts") or 0) + 1.28 * _cap_sd(pick), 1)
+    risks = []
+    if start is not None and start < 80:
+        risks.append(f"Start chance {start}% - rotation/minutes risk.")
+    if pl.get("status") == "d" or (pl.get("chance") not in (None, 100)):
+        risks.append(f"Flagged: {pl.get('news') or 'doubt'}")
+    if pick.get("position") in ("GK", "DEF"):
+        risks.append("Defender: points rely on a clean sheet; low haul ceiling.")
+    if pick_conf is not None and pick_conf < 60:
+        risks.append(f"Close call vs {nxt.get('name')} - near coin-flip.")
+    if reliab < 50:
+        risks.append(f"Small sample ({n90:.1f} full games) - projection less reliable.")
+    return {"scores": scores, "confidence": conf, "reasons": reasons, "margin": margin,
+            "start": start, "reliability": reliab, "pick_conf": pick_conf,
+            "ceiling": ceiling, "risks": risks,
+            "alt": {"name": nxt.get("name"), "xpts": nxt.get("xpts"),
+                    "ceiling": round((nxt.get("xpts") or 0) + 1.28 * _cap_sd(nxt), 1)} if nxt else None}
 
 
 def resolve_squad(squad, players):
@@ -504,7 +578,7 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
             _cap_proj = squad_projection(snap, players, squad, gw)
             ranked = [pp for pp in _cap_proj["players"]
                       if pp.get("xpts") is not None and not pp.get("is_bench")]
-            ranked.sort(key=lambda pp: -(pp.get("xpts") or 0))
+            ranked.sort(key=lambda pp: -cap_score(pp))   # mean + upside
             if ranked:
                 out["captain"] = dict(ranked[0])
                 if len(ranked) > 1:
@@ -561,6 +635,17 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
                     "value": round(o.get("xpts", 0) / o["price"], 2) if o.get("price") else None,
                     "conf": o.get("confidence"),
                 }
+            try:
+                _sqr = squad_projection(snap, players, squad, gw)["players"]
+                for _r, _m in zip(_sqr, squad):
+                    _r["element"] = _r.get("element") or _m.get("element")
+                _clubs = {}
+                for _r in _sqr:
+                    _clubs[_r.get("team")] = _clubs.get(_r.get("team"), 0) + 1
+                for o in opps[:5]:
+                    o["label"], o["label_why"] = label_opportunity(o, _sqr, _by_id, snap.get("bank"), _clubs)
+            except Exception:
+                pass
             out["opportunities"] = opps[:5]
 
             # Projected score via the CENTRAL engine (same calc My Team uses),

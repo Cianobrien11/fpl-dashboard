@@ -34,6 +34,9 @@
   table.opps td{padding:9px 6px;border-bottom:1px solid var(--border)}
   table.opps tr:last-child td{border-bottom:none}
   table.opps tr:has(+ tr.opp-ctx) td{border-bottom:none;padding-bottom:3px}
+  .lbl{font-size:9.5px;font-weight:900;padding:2px 6px;border-radius:5px;margin-right:6px;letter-spacing:.03em}
+  .lbl-BUY{background:var(--easy-bg);color:var(--easy)}.lbl-WATCH{background:var(--surface2);color:var(--muted)}
+  .lbl-DIFFERENTIAL{background:#2a1a44;color:#c4a1ff}.lbl-AVOID{background:var(--hard-bg);color:var(--hard)}
   .ctx-fx{font-weight:800;padding:1px 6px;border-radius:100px}
   .ctx-easy{background:var(--easy-bg);color:var(--easy)}.ctx-mid{color:var(--mid)}.ctx-hard{color:var(--hard)}
   .opp-nm{font-weight:800}.opp-tm{font-size:10px;color:var(--muted)}
@@ -115,6 +118,17 @@
 <details class="card" style="padding:10px 14px;margin:8px 0 4px">
   <summary style="font-weight:800;font-size:13px;cursor:pointer">Why captain {{ captain.name }}?</summary>
   <div style="margin-top:10px">
+    {% set w = captain.why %}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin-bottom:12px">
+      {% for lab,v,tip in [('Starts',w.start,'Chance he plays 60+ mins'),('Data reliability',w.reliability,'How much match data backs the projection'),('Right pick',w.pick_conf,'Chance he outscores ' ~ (w.alt.name if w.alt else 'the next option'))] %}
+      <div style="background:var(--surface2);border-radius:10px;padding:10px 4px" title="{{ tip }}">
+        <div style="font-size:19px;font-weight:900;color:{{ 'var(--easy)' if (v or 0)>=70 else 'var(--mid)' if (v or 0)>=55 else 'var(--hard)' }}">{{ v if v is not none else '–' }}{{ '%' if v is not none }}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px">{{ lab }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if w.alt %}<div style="font-size:12.5px;margin-bottom:10px">vs <b>{{ w.alt.name }}</b>: {{ captain.xpts }} vs {{ w.alt.xpts }} xPts ({{ '+' if (w.margin or 0)>=0 }}{{ w.margin }}) · ceiling {{ w.ceiling }} vs {{ w.alt.ceiling }}</div>{% endif %}
+    {% if w.risks %}<div style="font-size:12px;color:var(--mid);margin-bottom:10px">{% for r in w.risks %}<div>⚠ {{ r }}</div>{% endfor %}</div>{% endif %}
     {% for k,v in captain.why.scores.items() %}
     <div style="display:flex;align-items:center;gap:8px;font-size:12px;margin:5px 0">
       <span style="width:96px;color:var(--muted);font-weight:700">{{ k }}</span>
@@ -155,13 +169,13 @@
 
 <!-- Best opportunities -->
 {% if opportunities %}
-<div class="sec-label">📈 Best Opportunities <span style="font-weight:600;text-transform:none;letter-spacing:0;opacity:.7">· top GW projections you don't own</span></div>
+<div class="sec-label">📈 Best Opportunities <span style="font-weight:600;text-transform:none;letter-spacing:0;opacity:.7">· labelled for your squad & bank</span></div>
 <div class="card" style="padding:4px 12px">
   <table class="opps">
     <tr><th>Player</th><th style="text-align:right">xPts</th><th style="text-align:right">Owned</th></tr>
     {% for o in opportunities %}
     <tr>
-      <td><span class="opp-pos op-{{ o.position }}">{{ o.position }}</span><span class="opp-nm">{{ o.name }}</span> <span class="opp-tm">{{ o.team }}{% if o.market %} · <span style="color:#fbbf24;font-weight:700">{{ o.market.label }} {{ o.market.value }}</span>{% endif %}</span></td>
+      <td><span class="opp-pos op-{{ o.position }}">{{ o.position }}</span>{% if o.label %}<span class="lbl lbl-{{ o.label }}">{{ o.label }}</span>{% endif %}<span class="opp-nm">{{ o.name }}</span> <span class="opp-tm">{{ o.team }}{% if o.market %} · <span style="color:#fbbf24;font-weight:700">{{ o.market.label }} {{ o.market.value }}</span>{% endif %}</span></td>
       <td class="opp-xp">{{ '%.1f'|format(o.xpts) }}</td>
       <td class="opp-own">{{ '%.1f'|format(o.selected_by|default(0)) }}%</td>
     </tr>
@@ -174,6 +188,7 @@
       {% if c.value %}· <b>{{ c.value }}</b> xPts/£m{% endif %}
       · £{{ '%.1f'|format(o.price) }}m
       {% if c.conf %}· {{ c.conf }}% conf{% endif %}
+      {% if o.label_why %}<div style="color:var(--text);font-weight:700;margin-top:2px">{{ o.label }}: {{ o.label_why }}</div>{% endif %}
     </td></tr>
     {% endif %}
     {% endfor %}
