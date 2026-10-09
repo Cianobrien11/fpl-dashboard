@@ -371,6 +371,27 @@ def _live_squad(squad, players):
         return squad
 
 
+@app.route("/app/refresh", methods=["GET", "POST"])
+def m_refresh():
+    """In-app refresh (keeps the user inside /app). Skips if refreshed <5 min ago."""
+    snap = _ensure_data()
+    import datetime as _dt
+    try:
+        last = _dt.datetime.fromisoformat(str(snap.get("scraped_at")).replace("Z", "+00:00"))
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=_dt.timezone.utc)
+        fresh = (_dt.datetime.now(_dt.timezone.utc) - last).total_seconds() < 300
+    except Exception:
+        fresh = False
+    if not fresh:
+        try:
+            _do_refresh()
+        except Exception:
+            pass
+    nxt = request.args.get("next") or ""
+    return redirect(nxt if nxt.startswith("/app") else url_for("m_home"))
+
+
 @app.route("/app/compare")
 def m_compare():
     """Transfer vs hold comparison for the user's real XI."""
@@ -465,12 +486,17 @@ def m_players():
     except Exception:
         _s = {}
     show_odds = _s.get("show_odds", True)
+    try:
+        _n = max(40, min(800, int(request.args.get("n", 40))))
+    except ValueError:
+        _n = 40
     data = mobile.players_payload(
         snap, players,
         position=request.args.get("position", "ALL"),
         sort=request.args.get("sort", "points"),
         search=request.args.get("q", "").strip(),
-        limit=40, show_odds=show_odds)
+        limit=_n, show_odds=show_odds)
+    data["limit"] = _n
     return render_template("m_players.html", tab="players", **data)
 
 
@@ -609,7 +635,8 @@ def m_analytics_sub(section):
             logs = []
     if section not in mobile.ANALYTICS_SECTIONS:
         abort(404)
-    data = mobile.analytics_sub_payload(section, snap, players=players, logs=logs)
+    data = mobile.analytics_sub_payload(section, snap, players=players, logs=logs,
+                                        pos=request.args.get("pos"))
     return render_template("m_analytics_sub.html", tab="analytics", **data)
 
 

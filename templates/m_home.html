@@ -222,7 +222,7 @@
     </tr>
     {% endfor %}
   </table>
-  <a class="ft-more" href="/">Full table on dashboard →</a>
+  <a class="ft-more" href="{{ url_for('m_analytics_sub', section='swings') }}">All fixture swings →</a>
 </div>
 {% endif %}
 
@@ -242,7 +242,7 @@
   {% for o in outlook %}
   <div class="ol-detail" data-i="{{ loop.index0 }}" style="{{ '' if loop.first else 'display:none;' }}margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:12.5px;line-height:1.7">
     <div style="font-weight:900;font-size:14px;margin-bottom:4px">{{ o.gw }}</div>
-    <div>Fixture rating: <b>{{ o.rating }}/10</b> <span style="color:var(--muted)">({{ o.n_easy }} easy · {{ o.n_tough }} tough{% if o.n_blank %} · {{ o.n_blank }} blank{% endif %})</span></div>
+    <div>Fixture rating: <b>{{ o.rating }}/10</b> <span style="color:var(--muted)">({{ o.n_easy }} easy · {{ o.n_tough }} tough{% if o.n_blank %} · {{ o.n_blank }} blank{% endif %} of your {{ o.n_xi }} starters)</span></div>
     {% if o.projected is not none %}<div>Projected XI: <b>{{ o.projected }} xPts</b></div>{% endif %}
     {% if o.best %}<div>✅ Best fixture: <b>{{ o.best.name }}</b> vs {{ o.best.fx }}</div>{% endif %}
     {% if o.worst %}<div>⚠️ Worst fixture: <b>{{ o.worst.name }}</b> vs {{ o.worst.fx }}</div>{% endif %}
@@ -264,7 +264,7 @@ document.querySelectorAll('.ol-btn').forEach(function(b){b.addEventListener('cli
 <a class="cta" href="{{ url_for('m_planner') }}">PLAN MY TEAM →</a>
 
 {% if not has_live %}
-<div class="refresh-note">Showing seed data. Open the <a href="/" style="color:var(--accent)">dashboard</a> and tap “Refresh Data” for live stats.</div>
+<div class="refresh-note">Showing seed data. <a href="{{ url_for('m_refresh', next=request.path) }}" style="color:var(--accent);font-weight:800">Refresh data now</a> for live stats.</div>
 {% endif %}
 
 {% endblock %}

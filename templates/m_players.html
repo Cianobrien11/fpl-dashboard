@@ -135,13 +135,16 @@
 {% else %}
   <div class="empty">
     {% if not has_live %}
-      No live player data yet. Open the <a href="/" style="color:var(--accent)">dashboard</a> and tap “Refresh Data” to load players.
+      No live player data yet. <a href="{{ url_for('m_refresh', next=request.path) }}" style="color:var(--accent);font-weight:800">Refresh data now</a> to load players.
     {% else %}
       No players match “{{ search }}”. Try a different search or filter.
     {% endif %}
   </div>
 {% endif %}
 
+{% if rows and rows|length >= limit %}
+<a href="{{ url_for('m_players', q=search, sort=sort, position=position, n=limit+40) }}" class="btn-accent" style="background:var(--surface2);color:var(--accent);border:1px solid var(--border);margin:12px 0 4px">Show 40 more players</a>
+{% endif %}
 <script>
   var PLAYER_POOL = [
     {% for pl in all_players %}{"n":{{ pl.name|tojson }},"t":{{ pl.team|tojson }},"p":{{ pl.pos|tojson }}}{{ "," if not loop.last }}{% endfor %}

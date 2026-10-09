@@ -695,7 +695,15 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
         gws = ticker.get("gws", [])
         rows = ticker.get("rows", [])
         if gws and rows:
-            starters = {m.get("name") for m in squad if not m.get("is_bench")} or {m.get("name") for m in squad}
+            if any(m.get("is_bench") for m in squad):
+                starters = {m.get("name") for m in squad if not m.get("is_bench")}
+            else:  # no bench flags: use the 11 best projected (same as My Team's auto XI)
+                try:
+                    _pj = squad_projection(snap, players, squad, gw)["players"]
+                    _pj = sorted([x for x in _pj if x.get("xpts") is not None], key=lambda x: -x["xpts"])[:11]
+                    starters = {x.get("name") for x in _pj} or {m.get("name") for m in squad[:11]}
+                except Exception:
+                    starters = {m.get("name") for m in squad[:11]}
             outlook = []
             for ci, label in enumerate(gws):
                 g = gw + ci
@@ -725,7 +733,7 @@ def home_payload(snap: dict, players: list[dict] | None = None) -> dict:
                     "rating": ease, "projected": proj,
                     "n_easy": sum(1 for c in cells if c[0] == 0),
                     "n_tough": sum(1 for c in cells if c[0] == 2),
-                    "n_blank": len(starters) - len(cells),
+                    "n_blank": len(starters) - len(cells), "n_xi": len(starters),
                     "best": {"name": best[1], "fx": best[2]} if best else None,
                     "worst": {"name": worst[1], "fx": worst[2]} if worst else None,
                 })
@@ -1386,7 +1394,7 @@ ANALYTICS_SECTIONS = {
 }
 
 
-def analytics_sub_payload(section, snap, players=None, logs=None):
+def analytics_sub_payload(section, snap, players=None, logs=None, pos=None):
     """Build the payload for a single analytics sub-page.
 
     Returns {section, title, has_live, gw, kind, data, note}.
@@ -1405,7 +1413,11 @@ def analytics_sub_payload(section, snap, players=None, logs=None):
         if section == "captaincy":
             out["data"] = analytics.captaincy_board(players, rankings, fixtures, gw, limit=15) if has_live else []
         elif section == "differentials":
-            out["data"] = analytics.differentials(players, rankings, fixtures, gw, max_own=10.0, limit=15) if has_live else []
+            _d = analytics.differentials(players, rankings, fixtures, gw, max_own=10.0, limit=400) if has_live else []
+            if pos and pos != "ALL":
+                _d = [x for x in _d if x.get("position") == pos]
+            out["data"] = _d[:15]
+            out["pos"] = pos or "ALL"
         elif section == "radar":
             # Radar needs team stats only (works from seed)
             out["data"] = analytics.team_radar(rankings, snap.get("team_strength"))

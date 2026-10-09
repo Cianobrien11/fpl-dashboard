@@ -262,7 +262,7 @@
 <div class="seed-note">Showing your saved squad. Import your FPL Team ID above to load your live team with captain, bench and bank.</div>
 {% endif %}
 {% if projected is none %}
-<div class="seed-note">Projected points activate once live player data is loaded — tap “Refresh Data” on the <a href="/" style="color:var(--accent)">dashboard</a>.</div>
+<div class="seed-note">Projected points activate once live player data is loaded — <a href="{{ url_for('m_refresh', next=request.path) }}" style="color:var(--accent);font-weight:800">Refresh data now</a>.</div>
 {% endif %}
 {% endif %}
 

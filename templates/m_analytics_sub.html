@@ -60,6 +60,13 @@
 
 {# ---------- CAPTAINCY / DIFFERENTIALS (player xPts lists) ---------- #}
 {% if kind in ['captaincy','differentials'] %}
+  {% if kind == 'differentials' %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    {% for ps in ['ALL','GK','DEF','MID','FWD'] %}
+    <a href="{{ url_for('m_analytics_sub', section='differentials', pos=ps) }}" style="padding:8px 14px;border-radius:100px;font-size:12px;font-weight:800;border:1px solid var(--border);{{ 'background:var(--accent);color:#06130d' if (pos or 'ALL')==ps else 'background:var(--surface2);color:var(--muted)' }}">{{ ps }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% if data %}
   <div class="card">
     {% for p in data %}
@@ -74,7 +81,7 @@
     {% endfor %}
   </div>
   {% elif not has_live %}
-  <div class="empty">Load live player data first — tap “Refresh Data” on the <a href="/" style="color:var(--accent)">dashboard</a>.</div>
+  <div class="empty">Load live player data first — <a href="{{ url_for('m_refresh', next=request.path) }}" style="color:var(--accent);font-weight:800">Refresh data now</a>.</div>
   {% else %}
   <div class="empty">No {{ title|lower }} to show right now.</div>
   {% endif %}
@@ -112,7 +119,7 @@
     </div>
     {% endfor %}
   {% elif not has_live %}
-  <div class="empty">Load live player data first — tap “Refresh Data” on the <a href="/" style="color:var(--accent)">dashboard</a>.</div>
+  <div class="empty">Load live player data first — <a href="{{ url_for('m_refresh', next=request.path) }}" style="color:var(--accent);font-weight:800">Refresh data now</a>.</div>
   {% else %}
   <div class="empty">No set-piece data available.</div>
   {% endif %}
@@ -286,7 +293,7 @@
         {% if c.ceiling %}<div class="val" style="margin-left:10px;color:var(--text)">{{ c.ceiling }}<span style="display:block;font-size:10px;color:var(--muted);font-weight:700">ceiling</span></div>{% endif %}
       </div>
       {% endfor %}
-      <div style="font-size:11px;color:var(--muted);padding:8px 2px">Ranked by average <b>plus upside</b>: a forward on 6.1 can beat a defender on 6.6 because attackers haul more often. Ceiling ≈ a score he beats about 1 week in 10.</div>
+      <div style="font-size:11px;color:var(--muted);padding:8px 2px">Ranked by projected points (xPts). Ceiling ≈ a score he beats about 1 week in 10, so it shows haul potential: attackers usually have the higher ceiling.</div>
     </div>
   {% elif not has_live %}<div class="empty">Load live data first — tap “Refresh Data”.</div>
   {% else %}<div class="empty">No captain picks available.</div>{% endif %}

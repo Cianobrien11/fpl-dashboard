@@ -1216,7 +1216,8 @@ def cap_sd(p):
 
 def cap_score(p):
     """THE captain ranking score (used everywhere): mean + share of upside."""
-    return (p.get("xpts") or 0) + 0.6 * cap_sd(p)
+    # User choice: rank captains by plain xPts (ceiling shown separately).
+    return p.get("xpts") or 0
 
 
 def cap_ceiling(p):

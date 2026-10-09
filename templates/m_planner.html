@@ -224,7 +224,7 @@
 </div>
 
 {% if not has_live %}
-<div class="empty">Projected points and the simulator activate once live player data is loaded. Open the <a href="/" style="color:var(--accent)">dashboard</a> and tap “Refresh Data”.</div>
+<div class="empty">Projected points and the simulator activate once live player data is loaded. <a href="{{ url_for('m_refresh', next=request.path) }}" style="color:var(--accent);font-weight:800">Refresh data now</a>.</div>
 {% endif %}
 
 {% endblock %}

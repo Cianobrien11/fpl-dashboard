@@ -97,7 +97,7 @@
 </div>
 
 {% if not has_live %}
-<div class="empty" style="margin-top:12px">Live previews (captaincy, differentials) activate once player data is loaded. Open the <a href="/" style="color:var(--accent)">dashboard</a> and tap “Refresh Data”. The full desktop dashboard also has every one of these analytics in depth.</div>
+<div class="empty" style="margin-top:12px">Live previews (captaincy, differentials) activate once player data is loaded. <a href="{{ url_for('m_refresh', next=request.path) }}" style="color:var(--accent);font-weight:800">Refresh data now</a>. The full desktop dashboard also has every one of these analytics in depth.</div>
 {% endif %}
 
 {% endblock %}
