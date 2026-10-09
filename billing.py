@@ -27,7 +27,15 @@ import models
 PRO_FEATURES = {"planner", "ask", "analytics", "transfers"}
 
 
+# TESTING MODE: subscriptions are hidden completely and every user gets full
+# access, whatever BILLING_ENABLED says on Render. At launch, set this to True
+# (then BILLING_ENABLED=1 on Render turns the Pro locks + Stripe back on).
+BILLING_LIVE = False
+
+
 def billing_enabled() -> bool:
+    if not BILLING_LIVE:
+        return False
     return os.environ.get("BILLING_ENABLED", "0") == "1"
 
 
