@@ -890,11 +890,14 @@ def fpl_iq_score(player: dict, xpts: float = 0.0, fix_score: float | None = None
     avg_min = float(player.get("avg_min", 0) or 0)
     own = float(player.get("selected_by", 0) or 0)
 
-    s_form = _norm(form, 0, 8) * 10
+    # Fix #5: wider scales so good players don't all pin at 10.0
+    s_form = _norm(form, 0, 12) * 10
     s_fix = fix_score if fix_score is not None else _norm(xpts, 0, 8) * 10
     s_xpts = _norm(xpts, 0, 9) * 10
     s_value = _norm(ppm, 0, 10) * 10
-    s_mins = _norm(avg_min if avg_min else mins / 3.0, 0, 90) * 10
+    starts = float(player.get("starts", 0) or 0)
+    s_mins = (0.6 * _norm(avg_min if avg_min else mins / 3.0, 30, 90)
+              + 0.4 * _norm(starts, 0, 10)) * 10
     s_own = (1 - _norm(own, 0, 50)) * 10
 
     # Position-aware weights. GK/DEF are clean-sheet assets -> fixture matters

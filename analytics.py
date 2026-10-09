@@ -906,19 +906,15 @@ def _x_appearance(player):
     chance = player.get("chance")
 
     # Base probability of starting from how many minutes they average + starts.
-    if avg_min >= 80:
-        p_start = 0.90
-    elif avg_min >= 65:
-        p_start = 0.75
-    elif avg_min >= 45:
-        p_start = 0.50
-    elif avg_min >= 20:
-        p_start = 0.25
-    else:
-        p_start = 0.10
-    # more starts = more secure
-    if ninetys >= 4 and starts >= 4:
-        p_start = min(0.97, p_start + 0.05)
+    # Fix #5: CONTINUOUS (was 5 buckets, so every 80+ min starter got the
+    # identical 0.95 -> identical 87% confidence). 20' avg -> 0.10, 90' -> 0.92.
+    p_start = 0.10 + 0.82 * max(0.0, min(1.0, (avg_min - 20) / 70.0))
+    # share of appearances that were starts (ninetys ~ full games played)
+    if ninetys >= 1:
+        start_share = min(1.0, starts / max(ninetys, starts, 1))
+        p_start *= 0.85 + 0.15 * start_share
+    if starts >= 4:
+        p_start = min(0.97, p_start + 0.04)
     # availability overrides
     if status in ("i", "s", "u"):
         p_start = 0.0
