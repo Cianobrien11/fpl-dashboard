@@ -101,7 +101,7 @@ details[open]>summary::before{transform:rotate(90deg)}
   </a>
 </div>
 
-{% if freshness %}<div class="freshbar fresh-{{ freshness.level }}">{{ '●' }} Data updated {{ freshness.label }} · {{ freshness.age }}{% if odds_freshness %} · odds {{ odds_freshness.age }}{% endif %}{% if freshness.level=='stale' %} — refresh recommended{% endif %}</div>{% endif %}
+{% if freshness %}<div class="freshbar fresh-{{ freshness.level }}">{{ '●' }} Data updated {{ freshness.label }} · {{ freshness.age }}{% if odds_freshness %} · odds {{ odds_freshness.age }}{% endif %}{% if freshness.level=='stale' %} — refresh recommended{% endif %}{% if deadline_in_h is not none and deadline_in_h > 0 %} · deadline in {{ '%.0f'|format(deadline_in_h) if deadline_in_h >= 1 else '<1' }}h{% endif %}{% if sources %} <details style="display:inline"><summary style="display:inline;min-height:0;cursor:pointer;text-decoration:underline">sources</summary><span style="display:block;font-weight:600;margin-top:2px">{% for k,v in sources.items() %}{{ {'fpl':'FPL data & team news','odds':'Odds','xg':'Team xG','shots':'Player shots','results':'Match results'}.get(k,k) }}: {{ v.age }}{{ ' · ' if not loop.last }}{% endfor %}</span></details>{% endif %}</div>{% endif %}
 <main class="screen">
   {% block content %}{% endblock %}
 </main>

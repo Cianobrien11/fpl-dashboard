@@ -573,6 +573,7 @@ def scrape_all() -> dict[str, Any]:
         cur = next((e["id"] for e in events if e.get("is_current")), None)
         bundle["current_gw"] = cur
         bundle["next_gw"] = nxt
+        bundle["deadline"] = next((e.get("deadline_time") for e in events if e.get("is_next")), None)
     except Exception as exc:  # noqa: BLE001
         errors.append(f"FPL API: {exc}")
 

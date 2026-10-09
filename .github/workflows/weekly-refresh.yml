@@ -22,6 +22,9 @@ on:
     - cron: "30 15,18 * * 0"
     # Mon/Tue/Wed/Fri evenings: after 19:30-20:00 UK kick-offs
     - cron: "30 21 * * 1,2,3,5"
+    # PRE-DEADLINE: refresh Fri 09:00 + 16:00 and Sat 08:30 UK (BST)
+    - cron: "0 8,15 * * 5"
+    - cron: "30 7 * * 6"
   workflow_dispatch: {}    # manual "Run workflow" button
 
 jobs:

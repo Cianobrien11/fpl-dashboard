@@ -40,6 +40,22 @@ except NameError:
 SEED = os.path.join(BASE, "seed_data.json")
 
 
+def _now_iso():
+    import datetime as _dt
+    return _dt.datetime.now(_dt.timezone.utc).isoformat()
+
+
+def _hours_until(iso):
+    import datetime as _dt
+    try:
+        t = _dt.datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=_dt.timezone.utc)
+        return (t - _dt.datetime.now(_dt.timezone.utc)).total_seconds() / 3600
+    except Exception:
+        return None
+
+
 def _freshness(iso):
     """Fix #14: turn the snapshot's UTC ISO stamp into a friendly, London-time
     label + age + staleness level (fresh <6h, aging <24h, stale >=24h)."""
@@ -66,6 +82,14 @@ def _freshness(iso):
         return {"label": local.strftime("%a %d %b, %H:%M"), "age": age, "level": level}
     except Exception:
         return {"label": str(iso)[:16], "age": "", "level": "aging"}
+
+
+def _deadline_aware(f, snap):
+    """Near the deadline, aging data (>6h) is shown as stale (red)."""
+    h = _hours_until(snap.get("deadline")) if snap.get("deadline") else None
+    if f and h is not None and 0 < h < 12 and f.get("level") == "aging":
+        f = {**f, "level": "stale"}
+    return f
 
 
 @app.context_processor
@@ -95,7 +119,9 @@ def inject_settings():
     return {"app_settings": s or {}, "current_user": cu,
             "is_pro": pro, "billing_on": billing.billing_enabled(),
             "pro_price": billing.pro_price(), "data_updated": updated,
-            "freshness": _freshness(updated),
+            "freshness": _deadline_aware(_freshness(updated), _snap),
+            "sources": {k: _freshness(v) for k, v in (_snap.get("source_updated") or {}).items()},
+            "deadline_in_h": _hours_until(_snap.get("deadline")) if _snap.get("deadline") else None,
             "odds_freshness": _freshness(_snap.get("odds_updated")) if _snap.get("odds_updated") else None}
 
 
@@ -343,6 +369,26 @@ def _live_squad(squad, players):
         return res
     except Exception:
         return squad
+
+
+@app.route("/app/model-health")
+def m_model_health():
+    """INTERNAL developer page: automatic checks on data + projections.
+    Not linked from the UI. Add ?format=json for raw output."""
+    snap = _ensure_data()
+    players = _players(snap)
+    uid = _uid()
+    try:
+        sq = models.load_squad(uid) if uid else []
+    except Exception:
+        sq = []
+    snap2 = {**snap, "squad": _live_squad(sq or snap.get("squad", []) or [], players)}
+    report = mobile.model_health(snap2, players, validation.LAST_REPORT, _SQUAD_REPORT,
+                                 {k: _freshness(v) for k, v in (snap.get("source_updated") or {}).items()},
+                                 _hours_until(snap.get("deadline")) if snap.get("deadline") else None)
+    if request.args.get("format") == "json":
+        return jsonify(report)
+    return render_template("m_health.html", tab="analytics", r=report)
 
 
 @app.route("/app/data-health")
@@ -897,6 +943,9 @@ def _do_refresh() -> dict:
     if bundle.get("next_gw"):
         snap["next_gw"] = bundle["next_gw"]
     snap["scraped_at"] = bundle["scraped_at"]
+    snap.setdefault("source_updated", {})["fpl"] = bundle["scraped_at"]
+    if bundle.get("deadline"):
+        snap["deadline"] = bundle["deadline"]
     snap["errors"] = bundle.get("errors", [])
     models.save_snapshot(snap)
     return bundle
@@ -982,6 +1031,7 @@ def ingest_shots():
 
     snap["players"] = players
     snap["shots_source"] = "fbref"  # real data now present
+    snap.setdefault("source_updated", {})["shots"] = _now_iso()
     models.save_snapshot(snap)
     return jsonify({"status": "ok", "matched": matched, "received": len(incoming)})
 
@@ -1029,6 +1079,7 @@ def ingest_team_stats():
         return jsonify({"status": "error", "reason": "too few teams"}), 400
     snap = _ensure_data()
     snap.setdefault("team_stats", {}).update(incoming)
+    snap.setdefault("source_updated", {})["xg"] = _now_iso()
     models.save_snapshot(snap)
     return jsonify({"status": "ok", "received": len(incoming)})
 
@@ -1058,6 +1109,7 @@ def ingest_odds():
     snap = _ensure_data()
     snap["odds"] = incoming
     snap["odds_updated"] = payload.get("updated")
+    snap.setdefault("source_updated", {})["odds"] = _now_iso()
     models.save_snapshot(snap)
     return jsonify({"status": "ok", "received": len(incoming)})
 
@@ -1074,6 +1126,7 @@ def ingest_match_details():
         return jsonify({"status": "error", "reason": "no matches"}), 400
     snap = _ensure_data()
     snap["match_details"] = incoming
+    snap.setdefault("source_updated", {})["results"] = _now_iso()
     models.save_snapshot(snap)
     return jsonify({"status": "ok", "received": len(incoming)})
 @app.template_filter("dcls")

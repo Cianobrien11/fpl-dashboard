@@ -1762,3 +1762,95 @@ def backtest_payload(snap, history_rows):
                              f"({acc}); {w2}% within \u00b12. Correlation {corr} means the model "
                              f"{rank}. Accuracy sharpens as more gameweeks are logged.")
     return {"ok": True, **res}
+
+
+
+# ---------------------------------------------------------------------------
+# MODEL HEALTH (internal): automatic sanity checks. Each check returns
+# {name, status: ok|warn|fail, detail, items[]}.
+# ---------------------------------------------------------------------------
+def model_health(snap, players, valid_report, squad_report, sources, deadline_h):
+    checks = []
+    gw = snap.get("next_gw") or snap.get("current_gw") or 1
+
+    def add(name, status, detail, items=None):
+        checks.append({"name": name, "status": status, "detail": detail, "items": (items or [])[:15]})
+
+    if not sources:
+        add("Data freshness", "warn", "No per-source timestamps yet - run a refresh + the GitHub Action.")
+    else:
+        stale = [f"{k}: {v.get('age')}" for k, v in sources.items() if v.get("level") != "fresh"]
+        add("Data freshness",
+            "fail" if any(v.get("level") == "stale" for v in sources.values()) else ("warn" if stale else "ok"),
+            ", ".join(f"{k} {v.get('age')}" for k, v in sources.items())
+            + (f" | deadline in {deadline_h:.1f}h" if deadline_h is not None else ""), stale)
+
+    vr = valid_report or {}
+    dropped = vr.get("dropped", [])
+    add("Player validation", "warn" if len(dropped) > 10 else "ok",
+        f"{vr.get('kept', '?')}/{vr.get('checked', '?')} kept, {len(dropped)} dropped, "
+        f"{len(vr.get('fixed', []))} fixed", [f"{n}: {why}" for n, why in dropped])
+
+    un = (squad_report or {}).get("unmatched", [])
+    fx = (squad_report or {}).get("fixed", [])
+    add("Squad identity", "fail" if un else ("warn" if fx else "ok"),
+        f"{len(un)} unmatched, {len(fx)} club corrections", [f"UNMATCHED {n}" for n in un] + fx)
+
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    fixtures = snap.get("fixtures", {})
+    try:
+        rows = analytics.expected_points(players, rankings, fixtures, gw)
+    except Exception as e:
+        rows = []
+        add("xPts engine", "fail", f"expected_points crashed: {e}")
+    hi = [r for r in rows if r["xpts"] > 11]
+    add("Unusually high xPts (>11)", "warn" if hi else "ok", f"{len(hi)} players",
+        [f"{r['name']} ({r['team']}) {r['xpts']}" for r in sorted(hi, key=lambda r: -r["xpts"])])
+    lm = [r for r in rows if (r.get("confidence") or 0) < 40 and r["xpts"] >= 4]
+    add("Low minutes, high xPts", "fail" if lm else "ok",
+        f"{len(lm)} players with <40% confidence but >=4 xPts",
+        [f"{r['name']} {r['xpts']} xPts @ {r.get('confidence')}%" for r in lm])
+
+    sq = snap.get("squad", []) or []
+    proj = squad_projection(snap, players, sq, gw) if sq and players else None
+    if proj:
+        miss = [f"{p['name']}: {p.get('reason')}" for p in proj["players"] if p.get("xpts") is None]
+        add("Squad projections", "warn" if miss else "ok",
+            f"{proj['matched_n']}/{proj['squad_n']} projected", miss)
+        vals = {"engine": proj["total"]}
+        for label, fn in [("home", lambda: home_payload(snap, players).get("projected")),
+                          ("my_team", lambda: team_payload(snap, players=players).get("projected")),
+                          ("planner", lambda: (planner_grid(snap, players, gw, gw).get("team_row") or [None])[0])]:
+            try:
+                vals[label] = fn()
+            except Exception as e:
+                vals[label] = f"err {e}"
+        nums = [v for v in vals.values() if isinstance(v, (int, float))]
+        ok = bool(nums) and len(nums) == len(vals) and max(nums) - min(nums) < 0.15
+        add("Home / My Team / Planner parity", "ok" if ok else "fail",
+            " | ".join(f"{k} {v}" for k, v in vals.items()))
+
+    try:
+        rec = recommend_transfer(snap, players, gw, min(gw + 4, 38))
+    except Exception as e:
+        rec = "err"
+        add("Transfer audit", "fail", f"crashed: {e}")
+    if isinstance(rec, dict):
+        n = rec.get("n_gw", 5) or 5
+        add("Transfer audit", "warn" if rec.get("flagged") else "ok",
+            f"{rec['out']} -> {rec['in']} +{rec['gain']} over {n} GWs ({rec['gain']/n:.1f}/GW)",
+            [f"out {rec['out']} ({rec.get('out_team')}): {rec['out_total']} ({rec.get('out_avg')}/GW)",
+             f"in  {rec['in']} ({rec.get('in_team')}): {rec['in_total']} ({rec.get('in_avg')}/GW)"])
+    elif rec is None and sq:
+        add("Transfer audit", "ok", "No recommendation passed validation (or none worth making).")
+
+    no_fx = [t for t in rankings if not any(f.get("gw") == gw for f in fixtures.get(t, []))]
+    add(f"GW{gw} fixture coverage", "warn" if no_fx else "ok",
+        f"{len(rankings) - len(no_fx)}/{len(rankings)} teams have a fixture", no_fx)
+    add("Confidence calibration", "warn",
+        "Not yet measurable - needs logged predictions vs actual minutes over several GWs.")
+
+    order = {"fail": 0, "warn": 1, "ok": 2}
+    checks.sort(key=lambda c: order[c["status"]])
+    summary = {s: sum(1 for c in checks if c["status"] == s) for s in ("fail", "warn", "ok")}
+    return {"gw": gw, "summary": summary, "checks": checks}

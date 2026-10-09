@@ -1,0 +1,20 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Model Health{% endblock %}
+{% block content %}
+<div class="sec-label">🩺 Model Health · GW{{ r.gw }} <span style="font-weight:600;text-transform:none;letter-spacing:0;opacity:.7">· internal</span></div>
+<div class="card" style="display:flex;gap:16px;justify-content:space-around;text-align:center">
+  <div><div style="font-size:24px;font-weight:900;color:var(--hard)">{{ r.summary.fail }}</div><div style="font-size:11px;color:var(--muted)">FAIL</div></div>
+  <div><div style="font-size:24px;font-weight:900;color:var(--mid)">{{ r.summary.warn }}</div><div style="font-size:11px;color:var(--muted)">WARN</div></div>
+  <div><div style="font-size:24px;font-weight:900;color:var(--easy)">{{ r.summary.ok }}</div><div style="font-size:11px;color:var(--muted)">OK</div></div>
+</div>
+{% for c in r.checks %}
+<details class="card" style="padding:4px 16px" {{ 'open' if c.status=='fail' }}>
+  <summary style="font-weight:800;font-size:14px;gap:8px">
+    <span style="color:{{ {'fail':'var(--hard)','warn':'var(--mid)','ok':'var(--easy)'}[c.status] }}">{{ {'fail':'✖','warn':'▲','ok':'✔'}[c.status] }}</span>{{ c.name }}
+  </summary>
+  <div style="font-size:12.5px;color:var(--muted);padding:0 0 12px;line-height:1.55">{{ c.detail }}
+  {% if c['items'] %}<ul style="margin:8px 0 0 16px">{% for it in c['items'] %}<li>{{ it }}</li>{% endfor %}</ul>{% endif %}</div>
+</details>
+{% endfor %}
+<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:12px"><a href="?format=json" style="color:var(--accent)">Raw JSON</a></div>
+{% endblock %}
