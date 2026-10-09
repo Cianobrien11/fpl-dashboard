@@ -403,10 +403,11 @@ def recommend_transfer(snap, players, gw_from, gw_to):
     #   * both players must be projected for EVERY GW in the window (a partial
     #     total -- missed matches / blank / unmatched -- inflates the gain)
     #   * per-GW xPts must be plausible (0..15 per GW, avg <= 10)
-    #   * gain > 25  -> rejected, try the next candidate (data artefact)
-    #   * gain > 15  -> allowed but flagged "check" so the UI warns
+    #   * gain > 3/GW (15 over 5 GWs) -> rejected, try next candidate
+    #   * gain > 2/GW (10 over 5 GWs) -> allowed but flagged "check"
     n_gw = gw_to - gw_from + 1
-    GAIN_FLAG, GAIN_REJECT = 15.0, 25.0
+    # Scaled per GW so the cap holds for any window length.
+    GAIN_FLAG, GAIN_REJECT = 2.0 * n_gw, 3.0 * n_gw
 
     def _valid_proj(r):
         per = r.get("per_gw") or {}

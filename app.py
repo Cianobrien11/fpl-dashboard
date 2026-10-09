@@ -668,6 +668,8 @@ def resend_verification():
 # ---------------------------------------------------------------------------
 @app.route("/app/upgrade")
 def m_upgrade():
+    if not billing.billing_enabled():
+        return redirect(url_for("m_home"))  # subscriptions hidden until launch
     snap = _ensure_data()
     return render_template("m_upgrade.html", tab="settings",
                            gw=snap.get("next_gw"))

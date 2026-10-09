@@ -38,7 +38,7 @@
   </div>
   <div class="form-card">
     <p style="font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:4px">
-      Your settings and saved team are linked to this account. Subscriptions &amp; Pro features are coming next.
+      Your settings and saved team are linked to this account.{% if billing_on %} Subscriptions &amp; Pro features are coming next.{% endif %}
     </p>
   </div>
   <a class="logout" href="{{ url_for('logout') }}">Log out</a>

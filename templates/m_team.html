@@ -223,7 +223,13 @@
   <div class="an-insight">Your <b>{{ analysis.best_line_name }}</b> is your strongest line this gameweek.</div>
   {% if analysis.strongest %}<div class="an-insight">⭐ Top projected: <b>{{ analysis.strongest.name }}</b> ({{ '%.1f'|format(analysis.strongest.xpts) }} pts)</div>{% endif %}
   {% if analysis.weakest %}<div class="an-insight">⚠️ Weakest starter: <b>{{ analysis.weakest.name }}</b> ({{ '%.1f'|format(analysis.weakest.xpts) }} pts)</div>{% endif %}
-  {% if analysis.transfer %}
+  {% if billing_on and not is_pro %}
+  <div class="an-rec" style="text-align:center">
+    <div class="an-rec-h">🔒 Suggested transfer</div>
+    <div class="an-rec-why" style="margin-bottom:8px">Multi-week transfer recommendations are a Pro feature.</div>
+    <a href="{{ url_for('m_upgrade') }}" style="display:inline-block;background:var(--accent);color:#06130d;font-weight:800;font-size:12.5px;padding:7px 15px;border-radius:8px;text-decoration:none">Upgrade to Pro</a>
+  </div>
+  {% elif analysis.transfer %}
   <div class="an-rec">
     <div class="an-rec-h">Suggested transfer</div>
     <div class="an-rec-move"><span style="color:var(--hard)">{{ analysis.transfer.out }}</span> → <span style="color:var(--easy)">{{ analysis.transfer['in'] }}</span> <span class="an-gain">+{{ analysis.transfer.gain }} pts</span></div>
