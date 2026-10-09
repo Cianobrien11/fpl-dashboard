@@ -208,6 +208,7 @@
 </div>
 {% endif %}
 
+<a href="{{ url_for('m_compare') }}" class="btn-accent" style="background:var(--surface2);color:var(--accent);border:1px solid var(--border);margin:12px 0">⚖️ Compare a transfer vs holding</a>
 <button type="button" class="analyse" onclick="document.getElementById('teamAnalysis').classList.toggle('open'); this.style.display='none'">Analyse my team →</button>
 
 {% if analysis %}
@@ -234,6 +235,7 @@
     <div class="an-rec-h">Suggested transfer</div>
     <div class="an-rec-move"><span style="color:var(--hard)">{{ analysis.transfer.out }}</span> → <span style="color:var(--easy)">{{ analysis.transfer['in'] }}</span> <span class="an-gain">+{{ analysis.transfer.gain }} pts</span></div>
     <div class="an-rec-why">{{ analysis.transfer.reason }}</div>
+    <a href="{{ url_for('m_compare', out=analysis.transfer.out, **{'in': analysis.transfer['in']}) }}" style="display:block;margin-top:10px;font-size:13px;font-weight:800;color:var(--accent)">Compare vs holding →</a>
   </div>
   {% endif %}
 </div>

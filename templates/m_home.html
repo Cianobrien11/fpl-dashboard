@@ -147,6 +147,7 @@
       {% if transfer_gain %}<span class="xfer-gain">+{{ transfer_gain }} pts</span>{% endif %}
     </div>
     {% if transfer.move.reason %}<div class="xfer-reason">{{ transfer.move.reason }}</div>{% endif %}
+    <a href="{{ url_for('m_compare', out=transfer.move.out, **{'in': transfer.move.get('in')}) }}" style="display:block;margin-top:12px;font-size:13px;font-weight:800;color:var(--accent)">Compare vs holding →</a>
   {% else %}
     <div class="empty">Transfer suggestions appear once live player data is loaded.</div>
   {% endif %}

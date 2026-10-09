@@ -1,0 +1,70 @@
+{% extends "mobile_base.html" %}
+{% block title %}FPL IQ — Transfer vs Hold{% endblock %}
+{% block content %}
+<div class="sec-label">⚖️ Transfer vs Hold</div>
+<form class="card" method="get" action="{{ url_for('m_compare') }}" style="display:grid;gap:10px">
+  <label style="font-size:12px;color:var(--muted);font-weight:700">Transfer out
+    <select name="out" style="width:100%;margin-top:4px;padding:11px;border-radius:10px;background:var(--surface2);color:var(--text);border:1px solid var(--border);font-size:14px">
+      {% for n in squad_names %}<option value="{{ n }}" {{ 'selected' if n==out_q }}>{{ n }}</option>{% endfor %}
+    </select></label>
+  <label style="font-size:12px;color:var(--muted);font-weight:700">Transfer in
+    <input name="in" value="{{ in_q }}" placeholder="Player name, e.g. Saka" style="width:100%;margin-top:4px;padding:11px;border-radius:10px;background:var(--surface2);color:var(--text);border:1px solid var(--border);font-size:14px"></label>
+  <div style="display:flex;gap:10px">
+    <label style="flex:1;font-size:12px;color:var(--muted);font-weight:700">Free transfers
+      <select name="ft" style="width:100%;margin-top:4px;padding:11px;border-radius:10px;background:var(--surface2);color:var(--text);border:1px solid var(--border)">
+        {% for n in [0,1,2,3,4,5] %}<option value="{{ n }}" {{ 'selected' if n==ft }}>{{ n }}{{ ' (−4 hit)' if n==0 }}</option>{% endfor %}
+      </select></label>
+    <label style="flex:1;font-size:12px;color:var(--muted);font-weight:700">Bank £m
+      <input name="bank" value="{{ bank if bank is not none else '' }}" placeholder="e.g. 1.5" inputmode="decimal" style="width:100%;margin-top:4px;padding:11px;border-radius:10px;background:var(--surface2);color:var(--text);border:1px solid var(--border)"></label>
+  </div>
+  <button class="btn-accent" type="submit">Compare</button>
+</form>
+
+{% if r and not r.ok %}<div class="card" style="color:var(--hard);font-size:13px">{{ r.error }}</div>{% endif %}
+
+{% if r and r.ok %}
+{% set vc = {'TRANSFER':'var(--easy)','WAIT':'var(--mid)','HOLD':'var(--muted)','BLOCKED':'var(--hard)'}[r.verdict] %}
+<div class="card" style="border-color:{{ vc }}">
+  <div style="font-size:26px;font-weight:900;color:{{ vc }}">{{ r.verdict }}</div>
+  <div style="font-size:14px;font-weight:700;margin-top:4px">{{ r.out.name }} → {{ r['in'].name }}</div>
+  <div style="font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5">{{ r.why }}</div>
+</div>
+
+<div class="sec-label">Your XI vs doing nothing</div>
+<div class="card" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
+  {% for lab,v in [('Next GW',r.g1),('3 GWs',r.g3),(r.n_gw ~ ' GWs',r.g5)] %}
+  <div><div style="font-size:22px;font-weight:900;color:{{ 'var(--easy)' if v>0 else 'var(--hard)' if v<0 else 'var(--muted)' }}">{{ '+' if v>0 }}{{ v }}</div><div style="font-size:11px;color:var(--muted)">{{ lab }}</div></div>
+  {% endfor %}
+  {% if r.hit %}<div style="grid-column:1/-1;font-size:12px;color:var(--hard)">−4 hit → net {{ '+' if r.net5>0 }}{{ r.net5 }} over {{ r.n_gw }} GWs</div>{% endif %}
+</div>
+
+<div class="sec-label">Money & rules</div>
+<div class="card" style="font-size:13px;line-height:1.8">
+  <div>Price: {{ r.out.name }} £{{ r.out.price }}m → {{ r['in'].name }} £{{ r['in'].price }}m (<b>{{ '+' if r.price_diff>0 }}£{{ r.price_diff }}m</b>)</div>
+  {% if r.bank is not none %}<div>Bank after: <b style="color:{{ 'var(--hard)' if r.bank_after < 0 else 'var(--text)' }}">£{{ r.bank_after }}m</b></div>{% else %}<div style="color:var(--muted)">Bank unknown: import your Team ID or enter it above.</div>{% endif %}
+  <div>{{ r['in'].team }} players after move: <b>{{ r.club_n }}/3</b></div>
+  <div style="font-size:11px;color:var(--muted)">Uses current prices; your selling price may be lower if {{ r.out.name }} rose since you bought.</div>
+</div>
+
+{% if r.risks %}
+<div class="sec-label">Risks</div>
+<div class="card" style="font-size:13px;line-height:1.6"><ul style="margin-left:16px">{% for x in r.risks %}<li>{{ x }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<div class="sec-label">Gameweek by gameweek</div>
+<div class="card" style="padding:8px 10px;overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+    <tr style="color:var(--muted);font-size:10.5px;text-transform:uppercase"><th style="text-align:left;padding:6px">GW</th><th style="text-align:left">{{ r.out.name }}</th><th style="text-align:left">{{ r['in'].name }}</th><th style="text-align:right">XI Δ</th></tr>
+    {% for x in r.rows %}
+    <tr style="border-top:1px solid var(--border)">
+      <td style="padding:8px 6px;font-weight:800">{{ x.gw }}</td>
+      <td>{{ x.out_x if x.out_x is not none else '–' }} <span style="color:var(--muted);font-size:11px">{{ x.out_opp }}</span></td>
+      <td>{{ x.in_x if x.in_x is not none else '–' }} <span style="color:var(--muted);font-size:11px">{{ x.in_opp }}{% if x.in_conf %} · {{ x.in_conf }}%{% endif %}</span></td>
+      <td style="text-align:right;font-weight:800;color:{{ 'var(--easy)' if x.delta>0 else 'var(--hard)' if x.delta<0 else 'var(--muted)' }}">{{ '+' if x.delta>0 }}{{ x.delta }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div style="font-size:11px;color:var(--muted);margin-top:6px">XI Δ = your starting XI's projected total (captain ×2, bench excluded) with the move minus without it.</div>
+</div>
+{% endif %}
+{% endblock %}

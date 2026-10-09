@@ -371,6 +371,32 @@ def _live_squad(squad, players):
         return squad
 
 
+@app.route("/app/compare")
+def m_compare():
+    """Transfer vs hold comparison for the user's real XI."""
+    snap = _ensure_data()
+    players = _players(snap)
+    uid = _uid()
+    sq, bank = [], None
+    try:
+        sq = models.load_squad(uid) if uid else []
+        bank = (models.load_settings(uid) or {}).get("bank") if uid else None
+    except Exception:
+        pass
+    sq = _live_squad(sq or snap.get("squad", []) or [], players)
+    if request.args.get("bank"):
+        try:
+            bank = float(request.args["bank"])
+        except ValueError:
+            pass
+    ft = int(request.args.get("ft", 1) or 1)
+    out_q, in_q = request.args.get("out", "").strip(), request.args.get("in", "").strip()
+    result = mobile.compare_transfer(snap, players, sq, out_q, in_q, bank=bank, free_transfers=ft) if out_q and in_q else None
+    names = sorted({m.get("name") for m in sq if m.get("name")})
+    return render_template("m_compare.html", tab="planner", r=result, out_q=out_q, in_q=in_q,
+                           ft=ft, bank=bank, squad_names=names, gw=snap.get("next_gw"))
+
+
 @app.route("/app/model-health")
 def m_model_health():
     """INTERNAL developer page: automatic checks on data + projections.
@@ -494,6 +520,12 @@ def m_team():
                          "multiplier": m.get("multiplier", 1)}
                         for m in imported.get("squad", [])]
                 models.save_squad(slim, _uid())
+                try:
+                    _st = models.load_settings(_uid()) or {}
+                    _st["bank"] = imported.get("bank")
+                    models.save_settings(_st, _uid())
+                except Exception:
+                    pass
             except Exception:
                 pass
 

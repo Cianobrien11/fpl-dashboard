@@ -1854,3 +1854,122 @@ def model_health(snap, players, valid_report, squad_report, sources, deadline_h)
     checks.sort(key=lambda c: order[c["status"]])
     summary = {s: sum(1 for c in checks if c["status"] == s) for s in ("fail", "warn", "ok")}
     return {"gw": gw, "summary": summary, "checks": checks}
+
+
+
+# ---------------------------------------------------------------------------
+# TRANSFER vs HOLD comparison (P1). Answers "is this worth my free transfer?"
+# by projecting the user's ACTUAL XI (captain, bench) with and without the
+# move, so a bench-to-bench swap correctly shows ~0 gain.
+# ---------------------------------------------------------------------------
+def _resolve_name(name, players):
+    n = _norm_name(name)
+    if not n:
+        return None
+    for test in (lambda x: x == n, lambda x: x.startswith(n), lambda x: n in x):
+        hits = [pl for pl in players if test(_norm_name(pl.get("name")))]
+        if hits:
+            return max(hits, key=lambda pl: pl.get("selected_by") or 0)
+    return None
+
+
+def compare_transfer(snap, players, squad, out_q, in_q, bank=None, free_transfers=1, horizon=5):
+    players = players or []
+    squad = list(squad or [])
+    gw = int(snap.get("next_gw") or snap.get("current_gw") or 1)
+    idx = _build_player_index(players)
+    res = {"ok": False, "gw": gw, "out_q": out_q, "in_q": in_q}
+    if not players or not squad:
+        res["error"] = "Needs live player data and your squad (import your Team ID on My Team)."
+        return res
+    # OUT must be in the squad; IN must not be.
+    out_pl, out_i = None, None
+    for i, m in enumerate(squad):
+        lv = _match_player(m, idx)
+        if lv and (_norm_name(out_q) in _norm_name(lv.get("name")) or _norm_name(lv.get("name")).startswith(_norm_name(out_q))):
+            out_pl, out_i = lv, i
+            break
+    in_pl = _resolve_name(in_q, players)
+    if out_pl is None:
+        res["error"] = f"Couldn't find '{out_q}' in your squad."
+        return res
+    if in_pl is None:
+        res["error"] = f"Couldn't find a player called '{in_q}'."
+        return res
+    if in_pl.get("id") in squad_ids(squad, players):
+        res["error"] = f"{in_pl['name']} is already in your squad."
+        return res
+    if in_pl.get("position") != out_pl.get("position"):
+        res["error"] = f"Positions differ ({out_pl.get('position')} vs {in_pl.get('position')}) - FPL transfers must be like-for-like."
+        return res
+
+    # Constraints: budget + 3-per-club
+    price_diff = round((in_pl.get("price") or 0) - (out_pl.get("price") or 0), 1)
+    blockers = []
+    if bank is not None and price_diff > (bank or 0) + 1e-9:
+        blockers.append(f"Not enough funds: costs £{price_diff}m more, you have £{bank}m in the bank.")
+    out_m = squad[out_i]
+    new_m = {**out_m, "name": in_pl["name"], "team": in_pl["team"], "position": in_pl["position"],
+             "price": in_pl.get("price"), "element": in_pl.get("id")}
+    new_squad = squad[:out_i] + [new_m] + squad[out_i + 1:]
+    club_n = sum(1 for m in new_squad if (_match_player(m, idx) or {}).get("team") == in_pl["team"])
+    if club_n > 3:
+        blockers.append(f"Would give you {club_n} {in_pl['team']} players (max 3).")
+    hit = 0 if (free_transfers or 0) >= 1 else 4
+
+    # Per-GW: player xPts AND your XI total, hold vs transfer
+    rows = []
+    for g in range(gw, min(gw + horizon - 1, 38) + 1):
+        hold = squad_projection(snap, players, squad, g)
+        move = squad_projection(snap, players, new_squad, g)
+        po = hold["players"][out_i]; pi = move["players"][out_i]
+        rows.append({"gw": g, "out_x": po.get("xpts"), "in_x": pi.get("xpts"),
+                     "hold": hold["total"], "move": move["total"],
+                     "delta": round(move["total"] - hold["total"], 1),
+                     "out_opp": f"{po.get('opp')} ({po.get('venue')})" if po.get("opp") else "blank",
+                     "in_opp": f"{pi.get('opp')} ({pi.get('venue')})" if pi.get("opp") else "blank",
+                     "in_conf": pi.get("confidence"), "out_conf": po.get("confidence")})
+
+    def gain(n):
+        return round(sum(r["delta"] for r in rows[:n]), 1)
+    g1, g3, g5 = gain(1), gain(3), gain(len(rows))
+    net5 = round(g5 - hit, 1)
+
+    # Risks
+    risks = []
+    if in_pl.get("status") in ("i", "s", "u"):
+        risks.append(f"⛔ {in_pl['name']} is unavailable: {in_pl.get('news') or 'flagged'}")
+    elif in_pl.get("status") == "d" or (in_pl.get("chance") not in (None, 100)):
+        risks.append(f"⚠ {in_pl['name']} is a doubt ({in_pl.get('chance')}%): {in_pl.get('news') or ''}".strip())
+    c1 = rows[0].get("in_conf")
+    if c1 is not None and c1 < 60:
+        risks.append(f"⚠ {in_pl['name']} minutes confidence only {c1}%.")
+    if out_m.get("is_bench"):
+        risks.append(f"{out_pl['name']} is on your bench, so the XI gain is small unless you start {in_pl['name']}.")
+    blanks = [r["gw"] for r in rows if r["in_opp"] == "blank"]
+    if blanks:
+        risks.append(f"{in_pl['name']} has no fixture in GW{', GW'.join(map(str, blanks))}.")
+
+    # Verdict
+    if blockers:
+        verdict, why = "BLOCKED", blockers[0]
+    elif any(r.startswith("⛔") for r in risks):
+        verdict, why = "HOLD", "Incoming player is unavailable."
+    elif net5 >= 3 and g1 >= 0:
+        verdict, why = "TRANSFER", f"+{net5} pts for your XI over {len(rows)} GWs" + (" after the -4 hit." if hit else " with a free transfer.")
+    elif net5 >= 3 and g1 < 0:
+        verdict, why = "WAIT", f"Worth it long-term (+{net5}) but loses {abs(g1)} this GW - consider making it next week."
+    elif any(r.startswith("⚠") for r in risks) and net5 > 0:
+        verdict, why = "WAIT", "Small gain with a minutes/injury doubt - wait for team news."
+    elif net5 > 0:
+        verdict, why = "HOLD", f"Only +{net5} over {len(rows)} GWs - not worth a transfer" + (" (or a hit)." if hit else "; bank it.")
+    else:
+        verdict, why = "HOLD", f"Doing nothing is better by {abs(net5)} pts."
+
+    res.update({"ok": True, "out": out_pl, "in": in_pl, "rows": rows,
+                "g1": g1, "g3": gain(3), "g5": g5, "hit": hit, "net5": net5, "n_gw": len(rows),
+                "price_diff": price_diff, "bank": bank,
+                "bank_after": round(bank - price_diff, 1) if bank is not None else None,
+                "club_n": club_n, "risks": risks, "blockers": blockers,
+                "verdict": verdict, "why": why, "out_bench": bool(out_m.get("is_bench"))})
+    return res
