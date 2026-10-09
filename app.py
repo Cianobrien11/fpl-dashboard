@@ -392,6 +392,35 @@ def m_refresh():
     return redirect(nxt if nxt.startswith("/app") else url_for("m_home"))
 
 
+@app.route("/app/projection")
+def m_projection():
+    """Headline feature: multi-GW squad projection + planned-squad comparison."""
+    snap = _ensure_data()
+    players = _players(snap)
+    uid = _uid()
+    sq, sample = [], True
+    try:
+        sq = models.load_squad(uid) if uid else []
+        sample = not sq
+    except Exception:
+        pass
+    sq = _live_squad(sq or snap.get("squad", []) or [], players)
+    outs, ins = request.args.getlist("out"), request.args.getlist("in")
+    plan = [(o.strip(), i.strip()) for o, i in zip(outs, ins) if o.strip() and i.strip()]
+    try:
+        horizon = int(request.args.get("h", 6))
+    except ValueError:
+        horizon = 6
+    try:
+        hits = int(request.args.get("hits", 0))
+    except ValueError:
+        hits = 0
+    data = mobile.projection_payload(snap, players, sq, horizon=horizon, plan=plan, hits=hits)
+    names = sorted({m.get("name") for m in sq if m.get("name")})
+    return render_template("m_projection.html", tab="planner", r=data, plan=plan, hits=hits,
+                           squad_names=names, is_sample=sample, gw=snap.get("next_gw"))
+
+
 @app.route("/app/compare")
 def m_compare():
     """Transfer vs hold comparison for the user's real XI."""

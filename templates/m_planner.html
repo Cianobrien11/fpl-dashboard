@@ -1,6 +1,10 @@
 {% extends "mobile_base.html" %}
 {% block title %}FPL IQ — Planner{% endblock %}
 {% block content %}
+<a href="{{ url_for('m_projection') }}" class="card" style="display:block;background:linear-gradient(135deg,var(--p1),var(--p2));border:none;color:#fff">
+  <div style="font-size:15px;font-weight:900">📈 Team Projection</div>
+  <div style="font-size:12px;opacity:.85;margin-top:2px">Your squad's expected points over the next 1–8 GWs, and how a transfer plan changes it →</div>
+</a>
 <style>
   .range-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
   .range-card h3{font-size:13px;font-weight:800;margin-bottom:10px}

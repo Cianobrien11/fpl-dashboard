@@ -93,6 +93,7 @@
   {% if projected is not none %}
     <div class="big">{{ projected }}</div>
     <div class="sub">Starting XI expected points this gameweek</div>
+    <a href="{{ url_for('m_projection') }}" style="display:inline-block;margin-top:10px;font-size:13px;font-weight:800;color:#fff;background:rgba(255,255,255,.16);padding:7px 12px;border-radius:9px">See next 6 GWs →</a>
   {% else %}
     <div class="big">—</div>
     <div class="sub">Refresh on the dashboard to pull live data</div>

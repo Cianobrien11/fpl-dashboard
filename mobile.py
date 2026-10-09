@@ -2069,3 +2069,144 @@ def compare_transfer(snap, players, squad, out_q, in_q, bank=None, free_transfer
                 "club_n": club_n, "risks": risks, "blockers": blockers,
                 "verdict": verdict, "why": why, "out_bench": bool(out_m.get("is_bench"))})
     return res
+
+
+
+# ---------------------------------------------------------------------------
+# MULTI-GW PROJECTION (headline feature). Same central engine per GW
+# (squad_projection: real XI, captain x2, bench excluded, blanks = 0,
+# doubles summed). Planned transfers are applied to a COPY of the squad and
+# compared under identical assumptions.
+# ---------------------------------------------------------------------------
+_SPREAD = {"FWD": 1.9, "MID": 1.8, "DEF": 1.3, "GK": 1.1}
+
+
+def _apply_plan(squad, players, plan):
+    idx = _build_player_index(players)
+    new = [dict(m) for m in squad]
+    applied, errors = [], []
+    for out_q, in_q in plan:
+        if not out_q or not in_q:
+            continue
+        oi = next((i for i, m in enumerate(new)
+                   if _norm_name(out_q) in _norm_name((_match_player(m, idx) or m).get("name"))), None)
+        inp = _resolve_name(in_q, players)
+        if oi is None:
+            errors.append(f"'{out_q}' isn't in your squad."); continue
+        if not inp:
+            errors.append(f"No player called '{in_q}'."); continue
+        outp = _match_player(new[oi], idx) or new[oi]
+        if inp.get("id") in squad_ids(new, players):
+            errors.append(f"{inp['name']} is already in your squad."); continue
+        if inp.get("position") != outp.get("position"):
+            errors.append(f"{outp.get('name')} ({outp.get('position')}) can't be swapped for {inp['name']} ({inp.get('position')})."); continue
+        new[oi] = {**new[oi], "name": inp["name"], "team": inp["team"], "position": inp["position"],
+                   "price": inp.get("price"), "element": inp.get("id")}
+        applied.append({"out": outp.get("name"), "in": inp["name"],
+                        "cost": round((inp.get("price") or 0) - (outp.get("price") or 0), 1)})
+    return new, applied, errors
+
+
+def _gw_series(snap, players, squad, gws):
+    series = []
+    for g in gws:
+        pj = squad_projection(snap, players, squad, g)
+        by_pos = {"GK": 0.0, "DEF": 0.0, "MID": 0.0, "FWD": 0.0}
+        var, blanks, doubles, rows = 0.0, [], [], []
+        for p in pj["players"]:
+            mult = 0 if p.get("is_bench") else (p.get("multiplier") or 1)
+            x = p.get("xpts")
+            rows.append({"name": p["name"], "position": p.get("position"), "team": p.get("team"),
+                         "xpts": x, "bench": p.get("is_bench")})
+            if p.get("is_bench"):
+                continue
+            if x is None:
+                if p.get("reason") == "no_fixture":
+                    blanks.append(p["name"])
+                continue
+            if "+" in str(p.get("opp") or ""):
+                doubles.append(p["name"])
+            pos = p.get("position") or "MID"
+            by_pos[pos] = by_pos.get(pos, 0) + x * mult
+            var += (mult * _SPREAD.get(pos, 1.6)) ** 2 * max(0.5, x)
+        series.append({"gw": g, "total": pj["total"], "sd": round(var ** 0.5, 1),
+                       "by_pos": {k: round(v, 1) for k, v in by_pos.items()},
+                       "blanks": blanks, "doubles": doubles, "rows": rows})
+    return series
+
+
+def projection_payload(snap, players, squad, horizon=6, plan=None, hits=0):
+    players = players or []
+    gw = int(snap.get("next_gw") or snap.get("current_gw") or 1)
+    horizon = max(1, min(8, int(horizon or 6)))
+    gws = list(range(gw, min(gw + horizon - 1, 38) + 1))
+    out = {"ok": False, "gw": gw, "gws": gws, "horizon": horizon}
+    if not players or not squad:
+        out["error"] = "Needs live player data and your squad."
+        return out
+    rankings = analytics.compute_rankings(snap.get("team_stats", {}), snap.get("team_strength"))
+    fixtures = snap.get("fixtures", {})
+    cur = _gw_series(snap, players, squad, gws)
+
+    ticker = analytics.my_team_ticker([m for m in squad if not m.get("is_bench")] or squad,
+                                      rankings, fixtures, gws[0], gws[-1])
+    for ci, row in enumerate(cur):
+        ds = [r["cells"][ci]["d"] for r in ticker.get("rows", [])
+              if ci < len(r["cells"]) and r["cells"][ci].get("txt") != "-"]
+        row["ease"] = round((2 - sum(ds) / len(ds)) / 2 * 10, 1) if ds else None
+
+    cum, var_cum = 0.0, 0.0
+    for k, r in enumerate(cur):
+        sd = r["sd"] * (1 + 0.06 * k)          # further ahead = less certain
+        cum += r["total"]; var_cum += sd ** 2
+        r["cum"] = round(cum, 1)
+        r["lo"], r["hi"] = round(max(0, r["total"] - 1.28 * sd), 1), round(r["total"] + 1.28 * sd, 1)
+    total = round(cum, 1)
+    rng = (round(total - 1.28 * var_cum ** 0.5, 1), round(total + 1.28 * var_cum ** 0.5, 1))
+    best = max(cur, key=lambda r: r["total"]); worst = min(cur, key=lambda r: r["total"])
+
+    def _why(r):
+        bits = []
+        if r.get("ease") is not None:
+            bits.append(f"fixture ease {r['ease']}/10")
+        if r["doubles"]:
+            bits.append(f"double GW for {', '.join(r['doubles'][:3])}")
+        if r["blanks"]:
+            bits.append(f"blank for {', '.join(r['blanks'][:3])}")
+        return "; ".join(bits) or "average fixtures"
+
+    pos_tot = {k: round(sum(r["by_pos"][k] for r in cur), 1) for k in ("GK", "DEF", "MID", "FWD")}
+    tbl = {}
+    for r in cur:
+        for p in r["rows"]:
+            e = tbl.setdefault(p["name"], {"name": p["name"], "position": p["position"], "team": p["team"],
+                                           "bench": p["bench"], "per": [], "sum": 0.0})
+            e["per"].append(p["xpts"])
+            e["sum"] += p["xpts"] or 0
+    ptbl = sorted(tbl.values(), key=lambda e: (bool(e["bench"]), -e["sum"]))
+    for e in ptbl:
+        e["sum"] = round(e["sum"], 1)
+
+    out.update({"ok": True, "series": cur, "total": total, "range": rng,
+                "next": cur[0]["total"], "next_range": (cur[0]["lo"], cur[0]["hi"]),
+                "best": {"gw": best["gw"], "total": best["total"], "why": _why(best)},
+                "worst": {"gw": worst["gw"], "total": worst["total"], "why": _why(worst)},
+                "pos_tot": pos_tot, "players": ptbl,
+                "max_bar": max(r["hi"] for r in cur) or 1})
+    starters = [e for e in ptbl if not e["bench"]]
+    if starters:
+        w = min(starters, key=lambda e: e["sum"])
+        out["weakest"] = {"name": w["name"], "sum": w["sum"], "avg": round(w["sum"] / len(gws), 1)}
+
+    if plan:
+        new_sq, applied, errs = _apply_plan(squad, players, plan)
+        out["plan_errors"] = errs
+        if applied:
+            pl = _gw_series(snap, players, new_sq, gws)
+            ptotal = round(sum(r["total"] for r in pl), 1)
+            hit = 4 * max(0, int(hits or 0))
+            out["plan"] = {"applied": applied, "series": [{"gw": r["gw"], "total": r["total"]} for r in pl],
+                           "total": ptotal, "hit": hit, "net": round(ptotal - hit - total, 1),
+                           "cost": round(sum(x["cost"] for x in applied), 1)}
+            out["max_bar"] = max(out["max_bar"], max(r["total"] for r in pl))
+    return out

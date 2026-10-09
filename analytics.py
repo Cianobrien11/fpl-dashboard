@@ -1055,6 +1055,38 @@ def _x_cards(player, p60):
 
 def expected_points(players: list, rankings: dict, fixtures: dict,
                     gw: int, history_by_element: dict | None = None) -> list:
+    """Per-player xPts for a GW, handling DOUBLE gameweeks: each fixture is
+    projected separately and summed (components too). Blank-GW players are
+    absent (= 0 points)."""
+    max_n = max((sum(1 for f in fx if f.get("gw") == gw) for fx in fixtures.values()), default=1)
+    if max_n <= 1:
+        return _expected_points_single(players, rankings, fixtures, gw, history_by_element)
+    merged = {}
+    for k in range(max_n):
+        fk = {}
+        for team, fx in fixtures.items():
+            in_gw = [f for f in fx if f.get("gw") == gw]
+            if len(in_gw) > k:
+                fk[team] = [in_gw[k]]
+        for r in _expected_points_single(players, rankings, fk, gw, history_by_element):
+            key = r.get("id") or (r["name"], r["team"])
+            if key not in merged:
+                merged[key] = {**r, "components": dict(r.get("components") or {}), "n_fix": 1}
+            else:
+                m = merged[key]
+                m["xpts"] = round(min(30.0, m["xpts"] + r["xpts"]), 1)
+                for c, v in (r.get("components") or {}).items():
+                    m["components"][c] = round(m["components"].get(c, 0) + v, 2)
+                m["opp"] = f"{m['opp']}+{r['opp']}"
+                m["venue"] = f"{m['venue']}{r['venue']}"
+                m["n_fix"] += 1
+    out = list(merged.values())
+    out.sort(key=lambda x: -x["xpts"])
+    return out
+
+
+def _expected_points_single(players: list, rankings: dict, fixtures: dict,
+                    gw: int, history_by_element: dict | None = None) -> list:
     """
     Component-based xPts (FPL IQ v2):
 
