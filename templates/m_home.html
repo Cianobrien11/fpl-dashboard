@@ -1,7 +1,12 @@
 {% extends "mobile_base.html" %}
 {% block title %}FPL IQ — Home{% endblock %}
 {% block content %}
+{% macro avail(m) %}{% if m.status in ['i','s','u'] %}<span class="aflag a-out" title="{{ m.news }}">✖ {{ 'Injured' if m.status=='i' else 'Suspended' if m.status=='s' else 'Unavailable' }}</span>{% elif m.status=='d' or (m.chance is not none and m.chance < 100) %}<span class="aflag a-doubt" title="{{ m.news }}">⚠ {{ m.chance if m.chance is not none else 50 }}%</span>{% endif %}{% endmacro %}
+
 <style>
+  .aflag{display:block;margin-top:3px;font-size:10px;font-weight:900;border-radius:4px;padding:1px 4px}
+  .a-out{background:#dc2626;color:#fff}.a-doubt{background:#f59e0b;color:#1a1200}
+
   .qline{font-size:13px;font-weight:800;color:var(--muted);margin:2px 4px 10px;letter-spacing:.01em}
 
   .hero{position:relative;overflow:hidden}
@@ -75,11 +80,16 @@
 </style>
 
 <div class="qline">What should I do this gameweek?</div>
+{% if is_sample %}
+<a href="{{ url_for('m_team') }}" class="card" style="display:block;border-color:#f59e0b;font-size:13px;line-height:1.5">
+  <b>👋 You're viewing a sample team.</b> Import your FPL Team ID on <span style="color:var(--accent);font-weight:800">My Team →</span> to get advice for your own squad.
+</a>
+{% endif %}
 
 <!-- Projected score hero -->
 <div class="card grad hero">
   <div class="pill">GW{{ gw }}</div>
-  <div class="lbl">Your projected points</div>
+  <div class="lbl">{{ 'Sample team · projected points' if is_sample else 'Your projected points' }}</div>
   {% if projected is not none %}
     <div class="big">{{ projected }}</div>
     <div class="sub">Starting XI expected points this gameweek</div>
@@ -95,7 +105,7 @@
 <div class="cv">
   <div class="cvcard">
     <div class="role"><span class="arm c">C</span><span>Captain</span></div>
-    <div class="nm">{{ captain.name }}</div>
+    <div class="nm">{{ captain.name }}</div>{{ avail(captain) }}
     <div class="meta">{{ captain.team }} · {{ captain.opponent or captain.opp }} ({{ captain.venue }})</div>
     <div class="xp">{{ '%.1f'|format(captain.xpts) if captain.xpts else '—' }}<small>xPts</small></div>
     {% if captain.confidence %}<div class="cap-conf">{{ captain.confidence }}% confidence</div>{% endif %}
@@ -104,7 +114,7 @@
   {% if vice %}
   <div class="cvcard">
     <div class="role"><span class="arm v">V</span><span>Vice</span></div>
-    <div class="nm">{{ vice.name }}</div>
+    <div class="nm">{{ vice.name }}</div>{{ avail(vice) }}
     <div class="meta">{{ vice.team }} · {{ vice.opponent or vice.opp }} ({{ vice.venue }})</div>
     <div class="xp" style="color:var(--text)">{{ '%.1f'|format(vice.xpts) if vice.xpts else '—' }}<small>xPts</small></div>
     {% if vice.confidence %}<div class="cap-conf">{{ vice.confidence }}% confidence</div>{% endif %}

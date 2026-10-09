@@ -1206,13 +1206,34 @@ def price_predictions(players: list) -> dict:
 # Phase 3 — Captaincy, Differentials, Team radar, My-Team fixture ticker
 # ==========================================================================
 
+CAP_SD_K = {"FWD": 1.9, "MID": 1.8, "DEF": 1.3, "GK": 1.1}
+
+
+def cap_sd(p):
+    """Rough one-GW points spread: attackers haul, defenders rarely do."""
+    return CAP_SD_K.get(p.get("position"), 1.6) * max(0.5, (p.get("xpts") or 0)) ** 0.5
+
+
+def cap_score(p):
+    """THE captain ranking score (used everywhere): mean + share of upside."""
+    return (p.get("xpts") or 0) + 0.6 * cap_sd(p)
+
+
+def cap_ceiling(p):
+    """~90th-percentile score: a total he beats about 1 week in 10."""
+    return round((p.get("xpts") or 0) + 1.28 * cap_sd(p), 1)
+
+
 def captaincy_board(players: list, rankings: dict, fixtures: dict, gw: int,
                     limit: int = 20) -> list:
     """Best captain picks across ALL players for a gameweek, by xPts."""
     ranked = [r for r in expected_points(players, rankings, fixtures, gw)
               if (r.get("confidence") or 0) >= 40]   # Fix #4: must actually play
-    # captains are almost always MID/FWD — surface those first but keep all
-    ranked.sort(key=lambda r: (-(r["xpts"] * (1.1 if r["position"] in ("MID", "FWD") else 1.0))))
+    # Fix #3: ONE ranking (mean + upside), same as Home's captain pick.
+    for r in ranked:
+        r["ceiling"] = cap_ceiling(r)
+        r["cap_score"] = round(cap_score(r), 2)
+    ranked.sort(key=lambda r: -r["cap_score"])
     return ranked[:limit]
 
 

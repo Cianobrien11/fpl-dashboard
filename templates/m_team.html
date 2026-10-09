@@ -1,7 +1,12 @@
 {% extends "mobile_base.html" %}
 {% block title %}FPL IQ — My Team{% endblock %}
 {% block content %}
+{% macro avail(m) %}{% if m.status in ['i','s','u'] %}<span class="aflag a-out" title="{{ m.news }}">✖ {{ 'Injured' if m.status=='i' else 'Suspended' if m.status=='s' else 'Unavailable' }}</span>{% elif m.status=='d' or (m.chance is not none and m.chance < 100) %}<span class="aflag a-doubt" title="{{ m.news }}">⚠ {{ m.chance if m.chance is not none else 50 }}%</span>{% endif %}{% endmacro %}
+
 <style>
+  .aflag{display:block;margin-top:3px;font-size:10px;font-weight:900;border-radius:4px;padding:1px 4px}
+  .a-out{background:#dc2626;color:#fff}.a-doubt{background:#f59e0b;color:#1a1200}
+
   .import-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;margin-bottom:12px}
   .import-card h3{font-size:14px;font-weight:800;margin-bottom:4px}
   .import-card p{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:11px}
@@ -180,6 +185,7 @@
     <div class="player">
       {% if m.is_captain %}<span class="arm c">C</span>{% elif m.is_vice %}<span class="arm v">V</span>{% endif %}
       <div class="pn">{{ m.name }}</div>
+      {{ avail(m) }}
       <div class="pmeta">{{ m.team }}{% if m.own %} · {{ '%.0f'|format(m.own) }}%{% endif %}</div>
       {% if m.xpts is not none %}<div class="pxp">{{ '%.1f'|format(m.xpts * (m.multiplier or 2) if m.is_captain else m.xpts) }}<small> proj{{ ' (C)' if m.is_captain }}</small></div>{% else %}<div class="pxp" title="{{ 'No fixture this GW' if m.xp_reason == 'no_fixture' else 'Not found in live FPL data' }}">–<small> {{ 'blank GW' if m.xp_reason == 'no_fixture' else 'no data' }}</small></div>{% endif %}
       {% if m.fix %}<div class="fixchip fix-{{ m.fix.band }}">{{ m.fix.opp }} ({{ m.fix.venue }})</div>{% endif %}
@@ -191,6 +197,14 @@
   <div class="prow">{% for m in fwds %}{{ pcard(m) }}{% endfor %}</div>
 </div>
 
+{% set _all = gk + defs + mids + fwds + (bench or []) %}
+{% set _flag = _all|selectattr('status','in',['i','s','u','d'])|list %}
+{% if _flag %}
+<div class="card" style="border-color:#f59e0b;font-size:12.5px;line-height:1.6">
+  <div style="font-weight:800;margin-bottom:4px">⚠ Team news</div>
+  {% for m in _flag %}<div><b>{{ m.name }}</b>{% if m.chance is not none %} ({{ m.chance }}%){% endif %}: {{ m.news or 'flagged' }}{{ ' · on bench' if m in (bench or []) }}</div>{% endfor %}
+</div>
+{% endif %}
 {% if bench %}
 <div class="bench-wrap">
   <div class="bench-label">Bench{% if bench_total %} · {{ bench_total }} xPts on the bench{% endif %}</div>
@@ -200,6 +214,7 @@
       <span class="arm" style="background:#475569;left:-6px;right:auto">{{ 'GK' if m.position == 'GK' else loop.index0 if bench[0].position == 'GK' else loop.index }}</span>
       <div class="pn">{{ m.name }}</div>
       <div class="pmeta">{{ m.position }} · {{ m.team }}</div>
+      {{ avail(m) }}
       {% if m.xpts is not none %}<div class="pxp">{{ '%.1f'|format(m.xpts) }}</div>{% else %}<div class="pxp">–<small> {{ 'blank GW' if m.xp_reason == 'no_fixture' else 'no data' }}</small></div>{% endif %}
       {% if m.fix %}<div class="fixchip fix-{{ m.fix.band }}">{{ m.fix.opp }} ({{ m.fix.venue }})</div>{% endif %}
     </div>
@@ -241,7 +256,9 @@
 </div>
 {% endif %}
 
-{% if not imported %}
+{% if is_sample %}
+<div class="seed-note" style="border:1px solid #f59e0b;color:var(--text)"><b>Sample team</b>: this is a demo squad, not yours. Enter your FPL Team ID above to see your own team.</div>
+{% elif not imported %}
 <div class="seed-note">Showing your saved squad. Import your FPL Team ID above to load your live team with captain, bench and bank.</div>
 {% endif %}
 {% if projected is none %}

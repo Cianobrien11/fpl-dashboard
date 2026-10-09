@@ -61,7 +61,7 @@
   <div class="mini">
     <div class="rk">{{ loop.index }}</div>
     <div><div class="nm">{{ c.name }}</div><div class="tm">{{ c.team }} · {{ c.position }}</div></div>
-    <div class="val">{{ '%.1f'|format(c.xpts) }}</div>
+    <div class="val">{{ '%.1f'|format(c.xpts) }}{% if c.ceiling %}<span style="display:block;font-size:10px;color:var(--muted);font-weight:700">ceil {{ c.ceiling }}</span>{% endif %}</div>
   </div>
   {% endfor %}
 </div>

@@ -283,8 +283,10 @@
         <div><div class="nm">{{ c.name }}</div><div class="tm">{{ c.team }} · {{ c.position }}{% if c.own %} · {{ '%.1f'|format(c.own) }}% own{% endif %}</div></div>
         {% if c.market_goals is not none %}<div class="val" style="color:#fbbf24;margin-right:10px">{{ '%.1f'|format(c.market_goals) }}<span style="display:block;font-size:10px;color:var(--muted);font-weight:700">mkt xG</span></div>{% endif %}
         <div class="val">{{ '%.1f'|format(c.xpts) }}<span style="display:block;font-size:10px;color:var(--muted);font-weight:700">xPts</span></div>
+        {% if c.ceiling %}<div class="val" style="margin-left:10px;color:var(--text)">{{ c.ceiling }}<span style="display:block;font-size:10px;color:var(--muted);font-weight:700">ceiling</span></div>{% endif %}
       </div>
       {% endfor %}
+      <div style="font-size:11px;color:var(--muted);padding:8px 2px">Ranked by average <b>plus upside</b>: a forward on 6.1 can beat a defender on 6.6 because attackers haul more often. Ceiling ≈ a score he beats about 1 week in 10.</div>
     </div>
   {% elif not has_live %}<div class="empty">Load live data first — tap “Refresh Data”.</div>
   {% else %}<div class="empty">No captain picks available.</div>{% endif %}

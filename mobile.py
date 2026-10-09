@@ -144,17 +144,12 @@ def squad_ids(squad, players):
     return ids
 
 
-_SD_K = {"FWD": 1.9, "MID": 1.8, "DEF": 1.3, "GK": 1.1}
-
-
 def _cap_sd(p):
-    """Rough points spread for one GW: attackers haul, defenders rarely do."""
-    return _SD_K.get(p.get("position"), 1.6) * max(0.5, (p.get("xpts") or 0)) ** 0.5
+    return analytics.cap_sd(p)
 
 
 def cap_score(p):
-    """Captain ranking score: mean + a share of upside (90th-pct ceiling)."""
-    return (p.get("xpts") or 0) + 0.6 * _cap_sd(p)
+    return analytics.cap_score(p)
 
 
 def _phi(z):
@@ -238,7 +233,7 @@ def captain_explain(pick, others, players=None):
     if nxt:
         sd = (_cap_sd(pick) ** 2 + _cap_sd(nxt) ** 2) ** 0.5
         pick_conf = int(round(100 * _phi(((pick.get("xpts") or 0) - (nxt.get("xpts") or 0)) / sd)))
-    ceiling = round((pick.get("xpts") or 0) + 1.28 * _cap_sd(pick), 1)
+    ceiling = analytics.cap_ceiling(pick)
     risks = []
     if start is not None and start < 80:
         risks.append(f"Start chance {start}% - rotation/minutes risk.")
@@ -254,7 +249,7 @@ def captain_explain(pick, others, players=None):
             "start": start, "reliability": reliab, "pick_conf": pick_conf,
             "ceiling": ceiling, "risks": risks,
             "alt": {"name": nxt.get("name"), "xpts": nxt.get("xpts"),
-                    "ceiling": round((nxt.get("xpts") or 0) + 1.28 * _cap_sd(nxt), 1)} if nxt else None}
+                    "ceiling": analytics.cap_ceiling(nxt)} if nxt else None}
 
 
 def resolve_squad(squad, players):
@@ -375,7 +370,10 @@ def squad_projection(snap, players, squad, gw):
         # (e.g. a transferred player's old club) are auto-corrected.
         live_team = r.get("team") if r else None
         live_pos = r.get("position") if r else None
+        _lv = _match_player(m, _pidx) if players else None
         out_players.append({
+            "status": (_lv or {}).get("status"), "chance": (_lv or {}).get("chance"),
+            "news": (_lv or {}).get("news"),
             "name": m.get("name"),
             "team": live_team or m.get("team"),
             "position": live_pos or m.get("position"),
@@ -847,7 +845,8 @@ def team_payload(snap: dict, imported: dict | None = None,
              "xp_reason": _pp.get("reason"),
              "team": _pp.get("team") or m.get("team"),
              "position": _pp.get("position") or m.get("position"),
-             "team_corrected": _pp.get("team_corrected", False)}
+             "team_corrected": _pp.get("team_corrected", False),
+             "status": _pp.get("status"), "chance": _pp.get("chance"), "news": _pp.get("news")}
         m["market"] = _market_chip_for(m, odds, fixtures, gw)
         m["fix"] = _player_fixture_chip(m.get("team"), fixtures, gw, rankings, m.get("position", "MID"))
         # ownership from live player data if available

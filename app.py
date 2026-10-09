@@ -436,11 +436,13 @@ def m_home():
     # Use the SAME squad My Team uses (the user's saved/imported squad), not the
     # shared seed squad — otherwise Home and My Team project different teams.
     uid = _uid()
+    is_sample = True
     if uid:
         try:
             user_squad = models.load_squad(uid)
             if user_squad:
                 snap = {**snap, "squad": user_squad}
+                is_sample = False
         except Exception:
             pass
     snap = {**snap, "squad": _live_squad(snap.get("squad", []) or [], players)}
@@ -449,6 +451,7 @@ def m_home():
     except Exception:
         snap["bank"] = None
     data = mobile.home_payload(snap, players)
+    data["is_sample"] = is_sample
     return render_template("m_home.html", tab="home", **data)
 
 
@@ -545,6 +548,12 @@ def m_team():
     snap = {**snap, "squad": _live_squad(snap.get("squad", []) or [], players)}
     if imported and imported.get("ok"):
         imported = {**imported, "squad": _live_squad(imported.get("squad", []), players)}
+    _team_sample = not (imported and imported.get("ok"))
+    if _team_sample and uid:
+        try:
+            _team_sample = not models.load_squad(uid)
+        except Exception:
+            pass
     gw_sel = request.args.get("gw")
     data = mobile.team_payload(snap, imported=imported, players=players,
                                gw_override=gw_sel)
@@ -574,6 +583,7 @@ def m_team():
                 rating = tr
     except Exception:
         rating = None
+    data["is_sample"] = _team_sample
     return render_template("m_team.html", tab="team", team_id=team_id,
                            rating=rating, **data)
 
