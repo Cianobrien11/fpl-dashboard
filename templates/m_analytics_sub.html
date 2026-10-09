@@ -14,10 +14,10 @@
   .row:last-child{border-bottom:none}
   .rk{width:20px;font-weight:900;color:var(--muted);font-size:13px;font-family:monospace}
   .nm{font-size:14px;font-weight:800}.tm{font-size:11px;color:var(--muted);margin-top:1px}
-  .pos{font-size:9px;font-weight:800;padding:2px 6px;border-radius:5px;color:#fff;margin-right:5px}
+  .pos{font-size:10px;font-weight:800;padding:2px 6px;border-radius:5px;color:#fff;margin-right:5px}
   .pGK{background:#b45309}.pDEF{background:#2b6cb0}.pMID{background:#15803d}.pFWD{background:#9d174d}
   .val{margin-left:auto;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;font-size:15px}
-  .val .k{display:block;font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase}
+  .val .k{display:block;font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase}
 
   /* radar bars */
   .radar-row{padding:11px 2px;border-bottom:1px solid var(--border)}
@@ -46,7 +46,7 @@
   .acc-stat .v{font-size:26px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums}
   .acc-stat .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
   table.acc{width:100%;border-collapse:collapse;font-size:12.5px}
-  table.acc th{text-align:left;color:var(--muted);font-size:9.5px;text-transform:uppercase;padding:7px 6px;border-bottom:1px solid var(--border)}
+  table.acc th{text-align:left;color:var(--muted);font-size:10.5px;text-transform:uppercase;padding:7px 6px;border-bottom:1px solid var(--border)}
   table.acc td{padding:8px 6px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
   .empty{font-size:12.5px;color:var(--muted);line-height:1.55;text-align:center;padding:26px 12px}
 </style>
@@ -213,7 +213,7 @@
       <div class="radar-row">
         <div class="radar-top"><div class="nm">{{ t.team }}</div><div class="xg">ATT {{ t.attack_ease }} · DEF {{ t.defence_ease }}</div></div>
         <div style="display:flex;gap:4px;margin-top:4px">
-          {% for c in t.chips %}<span style="font-size:9px;font-weight:700;padding:3px 5px;border-radius:5px;background:var(--easy-bg);color:var(--easy)">{{ c.opp[:3]|upper }}{{ c.venue }}</span>{% endfor %}
+          {% for c in t.chips %}<span style="font-size:10px;font-weight:700;padding:3px 5px;border-radius:5px;background:var(--easy-bg);color:var(--easy)">{{ c.opp[:3]|upper }}{{ c.venue }}</span>{% endfor %}
         </div>
       </div>
       {% endfor %}
@@ -224,7 +224,7 @@
       <div class="radar-row">
         <div class="radar-top"><div class="nm">{{ t.team }}</div><div class="xg">ATT {{ t.attack_ease }} · DEF {{ t.defence_ease }}</div></div>
         <div style="display:flex;gap:4px;margin-top:4px">
-          {% for c in t.chips %}<span style="font-size:9px;font-weight:700;padding:3px 5px;border-radius:5px;background:var(--hard-bg);color:var(--hard)">{{ c.opp[:3]|upper }}{{ c.venue }}</span>{% endfor %}
+          {% for c in t.chips %}<span style="font-size:10px;font-weight:700;padding:3px 5px;border-radius:5px;background:var(--hard-bg);color:var(--hard)">{{ c.opp[:3]|upper }}{{ c.venue }}</span>{% endfor %}
         </div>
       </div>
       {% endfor %}
@@ -242,7 +242,7 @@
         {% for pl in data[posn][:5] %}
         <div class="row"><div class="rk">{{ loop.index }}</div>
           <div><div class="nm">{{ pl.name }}</div><div class="tm">{{ pl.team }} · £{{ '%.1f'|format(pl.price) }}m</div></div>
-          <div class="val">{{ '%.1f'|format(pl.ppm|default(0)) }}<span style="display:block;font-size:9px;color:var(--muted);font-weight:700">pts/£m</span></div></div>
+          <div class="val">{{ '%.1f'|format(pl.ppm|default(0)) }}<span style="display:block;font-size:10px;color:var(--muted);font-weight:700">pts/£m</span></div></div>
         {% endfor %}
       </div>
       {% endif %}
@@ -259,7 +259,7 @@
     <div class="row">
       <div class="rk">{{ loop.index }}</div>
       <div><div class="nm">{{ t.team }}</div><div class="tm">vs {{ t.opp }} ({{ t.venue }}){% if t.has_market %} · market{% endif %}</div></div>
-      <div class="val">{{ t.cs_pct }}%<span style="display:block;font-size:9px;color:var(--muted);font-weight:700">CS odds</span></div>
+      <div class="val">{{ t.cs_pct }}%<span style="display:block;font-size:10px;color:var(--muted);font-weight:700">CS odds</span></div>
     </div>
     {% endfor %}
   </div>
@@ -281,8 +281,8 @@
       <div class="row">
         <div class="rk">{{ loop.index }}</div>
         <div><div class="nm">{{ c.name }}</div><div class="tm">{{ c.team }} · {{ c.position }}{% if c.own %} · {{ '%.1f'|format(c.own) }}% own{% endif %}</div></div>
-        {% if c.market_goals is not none %}<div class="val" style="color:#fbbf24;margin-right:10px">{{ '%.1f'|format(c.market_goals) }}<span style="display:block;font-size:9px;color:var(--muted);font-weight:700">mkt xG</span></div>{% endif %}
-        <div class="val">{{ '%.1f'|format(c.xpts) }}<span style="display:block;font-size:9px;color:var(--muted);font-weight:700">xPts</span></div>
+        {% if c.market_goals is not none %}<div class="val" style="color:#fbbf24;margin-right:10px">{{ '%.1f'|format(c.market_goals) }}<span style="display:block;font-size:10px;color:var(--muted);font-weight:700">mkt xG</span></div>{% endif %}
+        <div class="val">{{ '%.1f'|format(c.xpts) }}<span style="display:block;font-size:10px;color:var(--muted);font-weight:700">xPts</span></div>
       </div>
       {% endfor %}
     </div>

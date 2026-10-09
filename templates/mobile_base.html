@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>{% block title %}FPL IQ{% endblock %}</title>
 <!-- PWA / installable app (FPL IQ) -->
 <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
@@ -37,7 +37,7 @@ a{text-decoration:none;color:inherit}
 /* Top app bar */
 .appbar{position:sticky;top:0;z-index:40;
   background:linear-gradient(120deg,var(--p1),var(--p2));
-  padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 14px;
+  padding:calc(env(safe-area-inset-top,0px) + 12px) var(--s4) 12px;
   display:flex;align-items:center;gap:10px;
   box-shadow:0 2px 14px rgba(0,0,0,.35)}
 .appbar .brand{font-size:19px;font-weight:900;letter-spacing:.5px;color:#fff;display:flex;align-items:center;gap:7px}
@@ -45,17 +45,27 @@ a{text-decoration:none;color:inherit}
 .appbar .gw{margin-left:auto;font-size:12px;font-weight:700;color:#fff;
   background:rgba(255,255,255,.16);padding:5px 11px;border-radius:100px}
 .appbar .gear{margin-left:10px;}
-.appbar .gear.noGw{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px}
+.appbar .gear{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px}
+.appbar .gear.noGw{margin-left:auto}
 .appbar .gear svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2;opacity:.9}
 .appbar .gear.active svg{stroke:var(--accent);opacity:1}
 
-/* Content */
-.screen{padding:16px 14px 8px;max-width:560px;margin:0 auto}
-.sec-label{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--muted);margin:18px 4px 9px}
-.sec-label:first-child{margin-top:4px}
+/* Content — one spacing scale (4/8/12/16/24/32) used everywhere */
+:root{--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px}
+html,body{line-height:1.45;-webkit-font-smoothing:antialiased}
+.screen{padding:var(--s4) var(--s4) var(--s3);max-width:560px;margin:0 auto}
+.sec-label{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin:var(--s6) var(--s1) var(--s3)}
+.sec-label:first-child{margin-top:var(--s2)}
 
-.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;margin-bottom:12px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:var(--s4);margin-bottom:var(--s4)}
+table td,table th{line-height:1.35}
+a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+details>summary{min-height:44px;display:flex;align-items:center;list-style:none}
+details>summary::before{content:"▸";margin-right:8px;transition:transform .15s}
+details[open]>summary::before{transform:rotate(90deg)}
+.freshbar{max-width:560px;margin:0 auto;padding:6px var(--s4) 0;font-size:11px;font-weight:700;color:var(--muted)}
+.freshbar.fresh-fresh{color:var(--easy)}.freshbar.fresh-aging{color:var(--mid)}.freshbar.fresh-stale{color:var(--hard)}
 .card.grad{background:linear-gradient(135deg,var(--p1),var(--p2));border:none}
 
 /* Bottom tab bar */
@@ -64,7 +74,7 @@ a{text-decoration:none;color:inherit}
   background:rgba(13,18,30,.92);backdrop-filter:blur(18px);
   border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:center}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
-  color:var(--muted);font-size:10px;font-weight:700;padding:8px 0 4px;transition:.15s}
+  color:var(--muted);font-size:11px;font-weight:700;padding:8px 0 4px;min-height:48px;transition:.15s}
 .tab svg{width:23px;height:23px;stroke:var(--muted);fill:none;stroke-width:2;transition:.15s}
 .tab.active{color:var(--accent)}
 .tab.active svg{stroke:var(--accent)}
@@ -79,7 +89,6 @@ a{text-decoration:none;color:inherit}
 <div class="appbar">
   <div class="brandwrap">
     <div class="brand"><span class="dot"></span> FPL IQ</div>
-    {% if freshness %}<div class="updated fresh-{{ freshness.level }}" style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:100px;display:inline-block;margin:4px 0;{% if freshness.level=='fresh' %}background:#e6f6ec;color:#137a3a{% elif freshness.level=='aging' %}background:#fff4dc;color:#8a5a00{% else %}background:#fde8e8;color:#a32020{% endif %}">{{ '🟢' if freshness.level=='fresh' else '🟡' if freshness.level=='aging' else '🔴' }} Data updated {{ freshness.label }} · {{ freshness.age }}{% if odds_freshness %} · odds {{ odds_freshness.age }}{% endif %}{% if freshness.level=='stale' %} — refresh recommended{% endif %}</div>{% endif %}
   </div>
   {% if gw %}<div class="gw">GW{{ gw }}</div>{% endif %}
   <a class="gear {{ 'active' if tab=='matches' }} {{ 'noGw' if not gw }}" href="{{ url_for('m_matches') }}" aria-label="Matches" style="margin-left:{{ 'auto' if not gw else '10px' }}">
@@ -90,6 +99,7 @@ a{text-decoration:none;color:inherit}
   </a>
 </div>
 
+{% if freshness %}<div class="freshbar fresh-{{ freshness.level }}">{{ '●' }} Data updated {{ freshness.label }} · {{ freshness.age }}{% if odds_freshness %} · odds {{ odds_freshness.age }}{% endif %}{% if freshness.level=='stale' %} — refresh recommended{% endif %}</div>{% endif %}
 <main class="screen">
   {% block content %}{% endblock %}
 </main>
